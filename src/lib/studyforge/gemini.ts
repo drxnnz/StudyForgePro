@@ -1,48 +1,37 @@
-import { buildStudyDeckPrompt, parseStudyDeckCsv, rowsToStudySet, validateStudyDeckRows } from "./studydeck";
-import type { StudySet } from "./types";
+import { createServerFn } from "@tanstack/react-start";
 
-const DEFAULT_MODEL = "gemini-3.8-flash";
-const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-
-export interface GeminiGenerationOptions {
-  apiKey: string;
-  file: File;
-  questionCount: number;
-  difficulty: "easy" | "mixed" | "hard";
-  focus: string[];
+export interface GenerateStudyDeckInput {
+  prompt: string;
 }
 
-function stripMarkdownFences(value: string) {
-  return value.replace(/^```(?:csv|text)?\s*/i, "").replace(/\s*```$/i, "").trim();
-}
+export const generateStudyDeckWithGemini = createServerFn({ method: "POST" })
+  .inputValidator((input: GenerateStudyDeckInput) => input)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!apiKey) {
+      throw new Error("Gemini is not configured. Add GEMINI_API_KEY to the server environment before using native AI generation.");
+    }
 
-async function filePart(file: File) {
-  const data = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < data.length; i += chunkSize) binary += String.fromCharCode(...data.subarray(i, i + chunkSize));
-  return { inline_data: { mime_type: file.type || "application/octet-stream", data: btoa(binary) } };
-}
+    const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: data.prompt }] }],
+        generationConfig: { temperature: 0.2 },
+      }),
+    });
 
-export async function generateStudySetWithGemini(options: GeminiGenerationOptions): Promise<StudySet> {
-  if (!options.apiKey.trim()) throw new Error("Add a Gemini API key before generating a study set.");
-  if (options.file.size > 15 * 1024 * 1024) throw new Error("For browser-safe generation, keep the source document under 15 MB.");
-  const prompt = buildStudyDeckPrompt({ questionCount: options.questionCount, difficulty: options.difficulty, focus: options.focus });
-  const body = {
-    contents: [{ role: "user", parts: [{ text: `${prompt}\n\nSOURCE FILE: ${options.file.name}` }, await filePart(options.file)] }],
-    generationConfig: { temperature: 0.2, responseMimeType: "text/plain" },
-  };
-  const response = await fetch(`${ENDPOINT}/${DEFAULT_MODEL}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": options.apiKey.trim() },
-    body: JSON.stringify(body),
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Gemini generation failed (${response.status}). ${detail.slice(0, 300)}`.trim());
+    }
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim() ?? "";
+    if (!text) throw new Error("Gemini returned an empty response. No StudyDeck output was generated.");
+    return { text };
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload?.error?.message || `Gemini request failed (${response.status}).`);
-  const text = payload?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || "").join("") || "";
-  if (!text.trim()) throw new Error("Gemini returned no study content.");
-  const rows = parseStudyDeckCsv(stripMarkdownFences(text));
-  const validation = validateStudyDeckRows(rows);
-  if (!validation.valid) throw new Error(`Generated StudyDeck failed validation: ${validation.errors.slice(0, 3).join(" ")}`);
-  return rowsToStudySet(rows, options.file.name.replace(/\.[^.]+$/, "") || "AI StudyDeck", options.file.name);
-}

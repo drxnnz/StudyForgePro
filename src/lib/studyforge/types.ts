@@ -22,7 +22,6 @@ export interface Question {
   hints: string[];
   tags: string[];
   lessonId?: string;
-  example?: string;
   distractorCandidates?: string[];
   acceptedAnswers?: string[];
   orderItems?: string[];
@@ -95,6 +94,16 @@ export interface SessionAnswer {
   questionId: string;
   correct: boolean;
   given: string;
+}
+
+export interface PendingImport {
+  id: string;
+  source: "paste" | "ai" | "file";
+  title: string;
+  studySet: StudySet;
+  rawText: string;
+  normalizedText: string;
+  warnings: string[];
 }
 
 export interface StudySession {

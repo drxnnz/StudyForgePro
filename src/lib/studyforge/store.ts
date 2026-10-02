@@ -5,7 +5,7 @@ import { normalizeAnswer } from "@/lib/utils";
 import { normalizeStudyDeckForStorage, parseStudyDeck, questionTypeFromStudyDeckRow, STUDYDECK_COLUMNS_HEADER, STUDYDECK_FORMAT_HEADER, STUDYDECK_SEPARATOR_HEADER } from "./studydeck";
 import { adaptiveSessionOrder, enrichMcqFromPool } from "./engine";
 import type {
-  CreateMethod, LearningRecord, Mastery, ModalName, Question, SessionConfig,
+  CreateMethod, LearningRecord, Mastery, ModalName, PendingImport, Question, SessionConfig,
   StudySession, StudySet, ToastItem, TrashSet, ViewName,
 } from "./types";
 import { VIEW_ORDER } from "./types";
@@ -17,13 +17,13 @@ interface AppStore {
   createMethod: CreateMethod | null;
   studySets: StudySet[];
   trashSets: TrashSet[];
+  pendingImport: PendingImport | null;
   learningRecords: Record<string, LearningRecord>;
   activeSetId: string | null;
   sessionConfig: SessionConfig;
   session: StudySession | null;
   sidebarExpanded: boolean;
   filterReview: "all" | Mastery;
-  selectedFile: { name: string; size: string } | null;
   libraryQuery: string;
   questionQuery: string;
   toast: ToastItem | null;
@@ -45,10 +45,11 @@ interface AppStore {
   setFilterReview: (f: "all" | Mastery) => void;
   setHelpQuery: (q: string) => void;
   toggleLesson: (lessonId: string) => void;
-  mockSelectFile: () => void;
-  mockRemoveFile: () => void;
   mockDeleteSet: (id: string) => void;
   duplicateSet: (id: string) => void;
+  previewStudyDeckText: (text: string, title?: string, source?: "paste" | "ai" | "file") => boolean;
+  commitPendingImport: () => boolean;
+  discardPendingImport: () => void;
   importStudyDeckText: (text: string, title?: string) => boolean;
   restoreTrashSet: (id: string) => void;
   permanentlyDeleteTrashSet: (id: string) => void;
@@ -126,9 +127,9 @@ let toastId = 1;
 
 export const useAppStore = create<AppStore>()(persist((set, get) => ({
   theme: "light", view: "home", navDirection: "forward", createMethod: null,
-  studySets: INITIAL_SETS, trashSets: INITIAL_TRASH, learningRecords: {}, activeSetId: null,
+  studySets: INITIAL_SETS, trashSets: INITIAL_TRASH, pendingImport: null, learningRecords: {}, activeSetId: null,
   sessionConfig: { mode: "mcq", count: "all", speedrun: false, timerSeconds: 300, reviewDueOnly: false },
-  session: null, sidebarExpanded: true, filterReview: "all", selectedFile: null,
+  session: null, sidebarExpanded: true, filterReview: "all",
   libraryQuery: "", questionQuery: "", toast: null, modal: null, scrollTo: null,
   typedAnswer: "", transitioning: false, tourActive: false, tourStep: 0, helpQuery: "",
 
@@ -146,8 +147,6 @@ export const useAppStore = create<AppStore>()(persist((set, get) => ({
   setFilterReview: (filterReview) => set({ filterReview }),
   setHelpQuery: (helpQuery) => set({ helpQuery }),
   toggleLesson: (lessonId) => set({ studySets: get().studySets.map((s) => ({ ...s, lessons: s.lessons.map((l) => l.id === lessonId ? { ...l, expanded: !l.expanded } : l) })) }),
-  mockSelectFile: () => set({ selectedFile: { name: "PH_History_101.pdf", size: "2.4 MB" } }),
-  mockRemoveFile: () => set({ selectedFile: null }),
   duplicateSet: (id) => {
     const item = get().studySets.find((s) => s.id === id); if (!item) return;
     const copy = structuredClone(item); const newId = `${item.id}_copy_${Date.now()}`;
@@ -155,15 +154,16 @@ export const useAppStore = create<AppStore>()(persist((set, get) => ({
     copy.lessons = copy.lessons.map((lesson, li) => ({ ...lesson, id: `${newId}_lesson_${li}`, questions: lesson.questions.map((q, qi) => ({ ...q, id: `${newId}_q_${li}_${qi}` })) }));
     set({ studySets: [copy, ...get().studySets] }); get().showToast("Study set duplicated.");
   },
-  importStudyDeckText: (text, title = "Imported StudyDeck") => {
+  previewStudyDeckText: (text, title = "Imported StudyDeck", source = "paste") => {
     try {
       const canonicalText = normalizeStudyDeckForStorage(text);
       const parsed = parseStudyDeck(canonicalText);
       const lessons = new Map<string, import("./types").Lesson>();
+      const importStamp = Date.now();
       for (const row of parsed.rows) {
         let lesson = lessons.get(row.lesson);
         if (!lesson) {
-          lesson = { id: `import_lesson_${Date.now()}_${lessons.size}`, title: row.lesson, expanded: true, questions: [] };
+          lesson = { id: `import_lesson_${importStamp}_${lessons.size}`, title: row.lesson, expanded: true, questions: [] };
           lessons.set(row.lesson, lesson);
         }
         const type = questionTypeFromStudyDeckRow(row);
@@ -174,58 +174,45 @@ export const useAppStore = create<AppStore>()(persist((set, get) => ({
             ? [row.back, ...row.distractorCandidates.filter((candidate) => candidate.trim().toLowerCase() !== row.back.trim().toLowerCase()).slice(0, 3)]
             : [];
         const question: Question = {
-          id: `import_q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          type,
-          prompt: row.front,
-          choices,
+          id: `import_q_${importStamp}_${Math.random().toString(36).slice(2, 8)}`,
+          type, prompt: row.front, choices,
           correctAnswer: type === "tf" ? (tfMatch?.[1]?.toLowerCase() === "true" ? 0 : 1) : type === "mcq" ? 0 : row.back,
-          explanation: row.explanation,
-          example: row.example || undefined,
-          mastery: "needs-review",
-          hints: row.hints.filter(Boolean),
-          tags: row.tags,
-          distractorCandidates: row.distractorCandidates,
-          acceptedAnswers: row.acceptedAnswers,
-          orderItems: row.orderItems,
-          questionVariants: row.questionVariants,
-          transferVariants: row.transferVariants,
-          questionIntent: row.questionIntent,
-          cognitiveLevel: row.cognitiveLevel,
-          statementVariants: row.statementVariants,
-          answerType: row.answerType,
-          answerFormat: row.answerFormat,
-          statementGroupId: row.statementGroupId,
-          distractorBank: row.distractorBank,
-          sourceDeck: row.deck,
-          lessonId: lesson.id,
+          explanation: row.explanation, example: row.example || undefined, mastery: "needs-review",
+          hints: row.hints.filter(Boolean), tags: row.tags, distractorCandidates: row.distractorCandidates,
+          acceptedAnswers: row.acceptedAnswers, orderItems: row.orderItems, questionVariants: row.questionVariants,
+          transferVariants: row.transferVariants, questionIntent: row.questionIntent, cognitiveLevel: row.cognitiveLevel,
+          statementVariants: row.statementVariants, answerType: row.answerType, answerFormat: row.answerFormat,
+          statementGroupId: row.statementGroupId, distractorBank: row.distractorBank, sourceDeck: row.deck, lessonId: lesson.id,
         };
         lesson.questions.push(question);
       }
-      const setId = `set_import_${Date.now()}`;
+      const setId = `set_import_${importStamp}`;
       const firstDeck = parsed.rows[0]?.deck?.trim();
       const studySet: StudySet = {
-        id: setId,
-        title: firstDeck || title,
-        subject: firstDeck || title,
-        documentName: "Imported StudyDeck",
-        progress: 0,
-        totalQuestions: [...lessons.values()].reduce((n, lesson) => n + lesson.questions.length, 0),
-        estimatedTime: "New",
-        lastStudied: "Never",
-        topics: [...lessons.keys()],
-        lessons: [...lessons.values()],
+        id: setId, title: firstDeck || title, subject: firstDeck || title, documentName: "Imported StudyDeck",
+        progress: 0, totalQuestions: [...lessons.values()].reduce((n, lesson) => n + lesson.questions.length, 0),
+        estimatedTime: "New", lastStudied: "Never", topics: [...lessons.keys()], lessons: [...lessons.values()],
       };
-      if (!studySet.totalQuestions) {
-        get().showToast("No cards were found in the StudyDeck import.", "error");
-        return false;
-      }
-      set({ studySets: [studySet, ...get().studySets], activeSetId: setId });
-      get().showToast(`${studySet.totalQuestions} cards imported.`);
+      if (!studySet.totalQuestions) { get().showToast("No cards were found in the StudyDeck import.", "error"); return false; }
+      const pending: PendingImport = { id: setId, source, title: studySet.title, studySet, rawText: text, normalizedText: canonicalText, warnings: [] };
+      set({ pendingImport: pending, activeSetId: setId, view: "generated-preview", navDirection: "forward" });
       return true;
     } catch (error) {
       get().showToast(error instanceof Error ? error.message : "The StudyDeck file could not be validated.", "error");
       return false;
     }
+  },
+  commitPendingImport: () => {
+    const pending = get().pendingImport;
+    if (!pending) { get().showToast("There is no validated StudyDeck waiting to be imported.", "error"); return false; }
+    set({ studySets: [pending.studySet, ...get().studySets], activeSetId: pending.studySet.id, pendingImport: null, view: "library", navDirection: "backward" });
+    get().showToast(`${pending.studySet.totalQuestions} cards imported.`);
+    return true;
+  },
+  discardPendingImport: () => set({ pendingImport: null }),
+  importStudyDeckText: (text, title = "Imported StudyDeck") => {
+    if (!get().previewStudyDeckText(text, title, "paste")) return false;
+    return get().commitPendingImport();
   },
   mockDeleteSet: (id) => {
     const item = get().studySets.find((s) => s.id === id); if (!item) return;

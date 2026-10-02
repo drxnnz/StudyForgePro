@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/studyforge/store";
 import { buildStudyForgePrompt, type StudyForgePromptLanguage } from "@/lib/studyforge/studydeck";
+import { generateStudyDeckWithGemini } from "@/lib/studyforge/gemini";
 
 export function CreateView() {
   const method = useAppStore((s) => s.createMethod);
@@ -299,9 +300,8 @@ function TxtWorkflow() {
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState<StudyForgePromptLanguage>("english");
   const [showPrompt, setShowPrompt] = useState(false);
-  const importStudyDeckText = useAppStore((s) => s.importStudyDeckText);
+  const previewStudyDeckText = useAppStore((s) => s.previewStudyDeckText);
   const showToast = useAppStore((s) => s.showToast);
-  const navigate = useAppStore((s) => s.navigate);
   const prompt = useMemo(() => buildStudyForgePrompt({
     language,
     subject: title.trim(),
@@ -309,22 +309,39 @@ function TxtWorkflow() {
     studyMaterial: text,
     delivery: "paste",
   }), [language, title, text]);
-  const onImport = () => {
-    if (!text.trim()) { showToast("Paste a complete StudyDeck-v1 document first.", "error"); return; }
-    if (importStudyDeckText(text, title.trim() || "Imported StudyDeck")) navigate("library");
+
+  const validate = () => {
+    if (!text.trim()) {
+      showToast("Paste a complete StudyDeck-v1 document first.", "error");
+      return;
+    }
+    previewStudyDeckText(text, title.trim() || "Imported StudyDeck", "paste");
   };
+
   return <div className="sf-card p-6 sm:p-8 space-y-6">
-    <div><h2 className="font-sans font-semibold text-xl text-fg mb-1">StudyDeck Import / Paste</h2><p className="text-sm text-muted">Paste a StudyDeck-v1 document generated from the canonical StudyForge prompt.</p></div>
+    <div>
+      <h2 className="font-sans font-semibold text-xl text-fg mb-1">StudyDeck Import / Paste</h2>
+      <p className="text-sm text-muted">Use the canonical StudyForge prompt with an external AI, then validate the returned StudyDeck-v1 before it enters your Library.</p>
+    </div>
     <PromptLanguageSelector value={language} onChange={setLanguage} />
-    <div><label className="block text-sm font-medium text-fg mb-2">Study set name <span className="text-muted font-normal">(optional)</span></label><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Leave blank to detect the subject from the source" className="sf-input" /></div>
+    <div>
+      <label className="block text-sm font-medium text-fg mb-2">Study set name <span className="text-muted font-normal">(optional)</span></label>
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Leave blank to detect the subject from the source" className="sf-input" />
+    </div>
     <div className="flex flex-col sm:flex-row gap-2">
       <CopyPromptButton prompt={prompt} />
       <Button variant="ghost" onClick={() => setShowPrompt((value) => !value)}>{showPrompt ? "Hide Prompt" : "Preview Prompt"}</Button>
     </div>
     {showPrompt && <textarea readOnly value={prompt} className="sf-input min-h-[20rem] resize-y font-mono text-xs leading-relaxed" aria-label="Canonical StudyForge prompt" />}
-    <label className="inline-flex items-center gap-2 min-h-11 px-4 rounded-md bg-surface-2 text-fg text-sm font-medium cursor-pointer w-fit"><FileUp className="size-4" /> Load .txt / .tsv<input type="file" accept=".txt,.tsv,text/plain,text/tab-separated-values" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setText(String(reader.result ?? "")); reader.readAsText(file); }} /></label>
+    <label className="inline-flex items-center gap-2 min-h-11 px-4 rounded-md bg-surface-2 text-fg text-sm font-medium cursor-pointer w-fit">
+      <FileUp className="size-4" /> Load .txt / .tsv
+      <input type="file" accept=".txt,.tsv,text/plain,text/tab-separated-values" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setText(String(reader.result ?? "")); reader.readAsText(file); }} />
+    </label>
     <textarea rows={14} value={text} onChange={(e) => setText(e.target.value)} placeholder={'#format:studydeck-v1\n#separator:Tab\n#columns:Deck\tLesson\tFront\tBack\tExplanation\tHint 1\tHint 2\tHint 3\tTags'} className="sf-input resize-y min-h-[16rem] font-mono text-xs" />
-    <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-border"><p className="text-xs text-muted">The same validator and normalizer is used before cards enter the app.</p><Button className="px-8" onClick={onImport}><Plus className="size-5" /> Validate &amp; Import</Button></div>
+    <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-border">
+      <p className="text-xs text-muted">Validation, normalization, metadata decoding, and the nine-column contract run before preview.</p>
+      <Button className="px-8" onClick={validate}><Check className="size-5" /> Validate &amp; Preview</Button>
+    </div>
   </div>;
 }
 
@@ -333,58 +350,86 @@ function AiWorkflow() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [sourceText, setSourceText] = useState("");
   const [aiOutput, setAiOutput] = useState("");
-  const selectedFile = useAppStore((s) => s.selectedFile);
-  const mockSelectFile = useAppStore((s) => s.mockSelectFile);
-  const mockRemoveFile = useAppStore((s) => s.mockRemoveFile);
-  const importStudyDeckText = useAppStore((s) => s.importStudyDeckText);
+  const [fileName, setFileName] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const previewStudyDeckText = useAppStore((s) => s.previewStudyDeckText);
   const showToast = useAppStore((s) => s.showToast);
-  const navigate = useAppStore((s) => s.navigate);
-  const openModal = useAppStore((s) => s.openModal);
   const prompt = useMemo(() => buildStudyForgePrompt({
     language,
     autoDetectSubject: true,
     studyMaterial: sourceText,
     delivery: "ai",
   }), [language, sourceText]);
-  const validateAiOutput = () => {
-    if (!aiOutput.trim()) { showToast("Paste the Gemini StudyDeck-v1 response first.", "error"); return; }
-    if (importStudyDeckText(aiOutput, selectedFile?.name?.replace(/\.[^.]+$/, "") || "AI Generated StudyDeck")) navigate("library");
+
+  const loadFile = (file: File | undefined) => {
+    if (!file) return;
+    setFileName(file.name);
+    if (!/\.(txt|tsv|md)$/i.test(file.name) && file.type && !file.type.startsWith("text/")) {
+      showToast("PDF and DOCX need text extraction before Gemini can receive their source. Paste the extracted text below.", "info");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setSourceText(String(reader.result ?? ""));
+    reader.onerror = () => showToast("The selected file could not be read.", "error");
+    reader.readAsText(file);
+  };
+
+  const generate = async () => {
+    if (!sourceText.trim()) {
+      showToast("Add study material before generating the quiz.", "error");
+      return;
+    }
+    setGenerating(true);
+    try {
+      const result = await generateStudyDeckWithGemini({ data: { prompt } });
+      setAiOutput(result.text);
+      if (!previewStudyDeckText(result.text, fileName.replace(/\.[^.]+$/, "") || "AI Generated StudyDeck", "ai")) return;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Gemini generation failed.", "error");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const validateOutput = () => {
+    if (!aiOutput.trim()) {
+      showToast("There is no Gemini output to validate yet.", "error");
+      return;
+    }
+    previewStudyDeckText(aiOutput, fileName.replace(/\.[^.]+$/, "") || "AI Generated StudyDeck", "ai");
   };
 
   return (
     <div className="sf-card p-6 sm:p-8 space-y-6">
       <div>
         <h2 className="font-sans font-semibold text-xl text-fg mb-1">AI Study Quiz</h2>
-        <p className="text-sm text-muted">Use the same canonical StudyForge prompt and StudyDeck-v1 validator for Gemini output.</p>
+        <p className="text-sm text-muted">Gemini produces the same canonical StudyDeck-v1 contract used by Import. StudyForge validates it before any card is stored.</p>
       </div>
       <PromptLanguageSelector value={language} onChange={setLanguage} />
-      {!selectedFile ? (
-        <button type="button" onClick={mockSelectFile} className="w-full border border-dashed border-border-strong p-12 sm:p-16 rounded-xl flex flex-col items-center justify-center text-center hover:border-accent transition-[border-color,transform] duration-200 bg-bg/50">
-          <div className="size-16 rounded-full bg-accent-soft text-accent flex items-center justify-center mb-4"><FileUp className="size-8" /></div>
-          <h3 className="font-sans font-semibold text-lg text-fg mb-1">Drag and drop documents</h3>
-          <p className="text-sm text-subtle mb-4">Supported formats: PDF, DOCX, TXT</p>
-          <span className="inline-flex items-center justify-center min-h-11 px-4 rounded-md bg-surface shadow-card text-sm font-medium">Browse Files</span>
-        </button>
-      ) : (
-        <div className="p-5 rounded-lg bg-bg border border-border flex items-center justify-between gap-3">
-          <div className="flex items-center gap-4 min-w-0"><div className="size-12 rounded-lg bg-accent-soft text-accent flex items-center justify-center shrink-0"><FileText className="size-6" /></div><div className="min-w-0"><p className="font-medium text-fg truncate">{selectedFile.name}</p><p className="text-xs text-muted">PDF · {selectedFile.size}</p></div></div>
-          <button type="button" onClick={mockRemoveFile} className="p-2 text-subtle hover:text-danger min-h-11 min-w-11 inline-flex items-center justify-center" aria-label="Remove file"><X className="size-5" /></button>
-        </div>
-      )}
+      <label className="w-full border border-dashed border-border-strong p-10 sm:p-14 rounded-xl flex flex-col items-center justify-center text-center hover:border-accent transition-[border-color,transform] duration-200 bg-bg/50 cursor-pointer">
+        <div className="size-16 rounded-full bg-accent-soft text-accent flex items-center justify-center mb-4"><FileUp className="size-8" /></div>
+        <h3 className="font-sans font-semibold text-lg text-fg mb-1">Add study material</h3>
+        <p className="text-sm text-subtle mb-4">TXT, TSV, or plain text files can be loaded directly. PDF/DOCX can be supplied after text extraction.</p>
+        <span className="inline-flex items-center justify-center min-h-11 px-4 rounded-md bg-surface shadow-card text-sm font-medium">Browse Files</span>
+        <input type="file" accept=".txt,.tsv,.md,text/plain,text/tab-separated-values" className="sr-only" onChange={(e) => loadFile(e.target.files?.[0])} />
+      </label>
+      {fileName && <div className="p-4 rounded-lg bg-bg border border-border flex items-center gap-3"><FileText className="size-5 text-accent shrink-0" /><span className="font-medium text-fg truncate">{fileName}</span></div>}
       <div>
-        <label className="block text-sm font-medium text-fg mb-2">Extracted study material <span className="text-muted font-normal">(used as the source for the canonical prompt)</span></label>
-        <textarea value={sourceText} onChange={(e) => setSourceText(e.target.value)} rows={7} className="sf-input resize-y font-mono text-xs" placeholder="Document text supplied to Gemini goes here..." />
+        <label className="block text-sm font-medium text-fg mb-2">Study material</label>
+        <textarea value={sourceText} onChange={(e) => setSourceText(e.target.value)} rows={9} className="sf-input resize-y font-mono text-xs" placeholder="Paste the source material here. This exact material is passed into the canonical prompt." />
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
         <CopyPromptButton prompt={prompt} />
         <Button variant="ghost" onClick={() => setShowPrompt((value) => !value)}>{showPrompt ? "Hide Prompt" : "Preview Prompt"}</Button>
-        <Button variant="secondary" onClick={() => openModal("generationOptions")}><Settings2 className="size-5" /> Generation Options</Button>
       </div>
       {showPrompt && <textarea readOnly value={prompt} className="sf-input min-h-[20rem] resize-y font-mono text-xs leading-relaxed" aria-label="Canonical StudyForge AI prompt" />}
       <div className="pt-4 border-t border-border space-y-3">
-        <label className="block text-sm font-medium text-fg">Gemini StudyDeck-v1 response</label>
+        <div className="flex items-center justify-between gap-3"><label className="block text-sm font-medium text-fg">Gemini StudyDeck-v1 response</label><span className="text-xs text-muted">Validated before Library commit</span></div>
         <textarea value={aiOutput} onChange={(e) => setAiOutput(e.target.value)} rows={10} className="sf-input resize-y font-mono text-xs" placeholder="#format:studydeck-v1 ..." />
-        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2"><Button variant="secondary" onClick={validateAiOutput}>Validate &amp; Import AI Output</Button><Button className="px-8" onClick={() => navigate("processing")} disabled={!selectedFile}><Sparkles className="size-5" /> Generate Study Quiz</Button></div>
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+          <Button variant="secondary" onClick={validateOutput} disabled={generating}>Validate &amp; Preview</Button>
+          <Button className="px-8" onClick={generate} disabled={generating || !sourceText.trim()}>{generating ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />} {generating ? "Generating..." : "Generate with Gemini"}</Button>
+        </div>
       </div>
     </div>
   );
@@ -423,83 +468,54 @@ export function ProcessingView() {
 }
 
 export function GeneratedPreviewView() {
+  const pending = useAppStore((s) => s.pendingImport);
+  const commitPendingImport = useAppStore((s) => s.commitPendingImport);
+  const discardPendingImport = useAppStore((s) => s.discardPendingImport);
   const navigate = useAppStore((s) => s.navigate);
-  const showToast = useAppStore((s) => s.showToast);
 
+  if (!pending) {
+    return <div className="sf-card p-8 text-center space-y-4"><h1 className="text-2xl text-fg">No pending StudyDeck</h1><p className="text-muted">There is no validated generation or import waiting for review.</p><Button onClick={() => navigate("create")}>Back to Create</Button></div>;
+  }
+
+  const lessons = pending.studySet.lessons;
   return (
-    <div className="max-w-[900px] mx-auto space-y-8">
+    <div className="max-w-[1100px] mx-auto space-y-8">
       <div className="text-center space-y-3 mb-8 stagger-in">
-        <div className="inline-flex items-center justify-center size-12 rounded-full bg-success-soft text-success mb-2">
-          <Check className="size-6" />
-        </div>
-        <h1 className="text-3xl text-fg">Study Set Generated</h1>
-        <p className="text-muted">Please review the extracted material before studying.</p>
+        <div className="inline-flex items-center justify-center size-12 rounded-full bg-success-soft text-success mb-2"><Check className="size-6" /></div>
+        <h1 className="text-3xl text-fg">Study Set Ready for Review</h1>
+        <p className="text-muted">This preview is built from the validated StudyDeck output, not a hardcoded sample.</p>
       </div>
-
       <div className="sf-card overflow-hidden">
         <div className="p-6 border-b border-border bg-bg-warm/40">
-          <h2 className="font-sans font-semibold text-xl text-fg mb-1">
-            Philippine History: Pre-Colonial to Spanish Era
-          </h2>
-          <p className="text-sm text-muted mb-4">Source: PH_History_101.pdf</p>
-          <div className="flex flex-wrap gap-2 text-sm font-medium">
-            <span className="bg-surface px-3 py-1 rounded-md shadow-card">25 Questions</span>
-            <span className="bg-surface px-3 py-1 rounded-md shadow-card">2 Lessons</span>
-          </div>
+          <h2 className="font-sans font-semibold text-xl text-fg mb-1">{pending.studySet.title}</h2>
+          <p className="text-sm text-muted mb-4">Source: {pending.source === "ai" ? "Gemini" : pending.source === "file" ? "StudyDeck file" : "Paste / Type"}</p>
+          <div className="flex flex-wrap gap-2 text-sm font-medium"><span className="bg-surface px-3 py-1 rounded-md shadow-card">{pending.studySet.totalQuestions} Questions</span><span className="bg-surface px-3 py-1 rounded-md shadow-card">{lessons.length} Lessons</span><span className="bg-surface px-3 py-1 rounded-md shadow-card">9 Columns</span></div>
         </div>
-        <div className="p-6 space-y-6">
-          <PreviewLesson
-            title="Lesson 1 - Pre-Colonial Period"
-            items={[
-              "What was the system of writing used by early Filipinos?",
-              "The Barangay was the basic socio-political unit.",
-            ]}
-          />
-          <PreviewLesson
-            title="Lesson 2 - Spanish Era"
-            items={["Who led the Spanish expedition in 1521?"]}
-          />
+        <div className="p-6 space-y-8">
+          {lessons.map((lesson) => (
+            <section key={lesson.id}>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3 border-b border-border pb-2">{lesson.title}</h3>
+              <div className="space-y-3">
+                {lesson.questions.map((q, i) => (
+                  <article key={q.id} className="rounded-xl border border-border bg-bg/50 p-4 sm:p-5">
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm font-medium text-fg"><span className="text-accent mr-2 tabular-nums">Q{i + 1}</span>{q.prompt}</p>
+                      <p className="text-sm text-muted"><strong className="text-fg">Answer:</strong> {typeof q.correctAnswer === "number" ? q.choices[q.correctAnswer] : q.correctAnswer}</p>
+                      {q.explanation && <p className="text-xs text-muted leading-relaxed"><strong className="text-fg">Explanation:</strong> {q.explanation}</p>}
+                      {q.example && <p className="text-xs text-muted leading-relaxed"><strong className="text-fg">Example:</strong> {q.example}</p>}
+                      {q.hints.length > 0 && <p className="text-xs text-muted">{q.hints.length} hint levels</p>}
+                      {q.distractorCandidates?.length ? <p className="text-xs text-muted">{q.distractorCandidates.length} source-grounded distractor candidates</p> : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </div>
-
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
-        <div className="flex gap-3 w-full sm:w-auto">
-          <Button
-            variant="secondary"
-            className="flex-1 sm:flex-none"
-            onClick={() => navigate("detail", "set_1")}
-          >
-            Continue Editing
-          </Button>
-          <Button
-            variant="secondary"
-            className="flex-1 sm:flex-none text-danger"
-            onClick={() => showToast("This feature is part of the prototype.", "info")}
-          >
-            Regenerate
-          </Button>
-        </div>
-        <Button className="px-8" onClick={() => navigate("session-config", "set_1")}>
-          Start Studying
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function PreviewLesson({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div>
-      <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3 border-b border-border pb-2">
-        {title}
-      </h3>
-      <div className="space-y-3">
-        {items.map((item, i) => (
-          <p key={item} className="text-sm font-medium text-fg">
-            <span className="text-accent mr-2 tabular-nums">Q{i + 1}</span>
-            {item}
-          </p>
-        ))}
+        <Button variant="secondary" onClick={discardPendingImport}>Discard Preview</Button>
+        <Button className="px-8" onClick={commitPendingImport}>Add to Library</Button>
       </div>
     </div>
   );

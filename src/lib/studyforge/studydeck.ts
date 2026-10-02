@@ -31,7 +31,7 @@ export function buildStudyForgePrompt(options: StudyForgePromptOptions = {}): st
   const promptAutoSubject = options.autoDetectSubject ?? true;
   const additionalInstructions = String(options.additionalInstructions ?? "").trim();
   const typedStudyMaterial = String(options.studyMaterial ?? "");
-  const importMethod = options.delivery === "file" ? "file" : "paste";
+  const importMethod = options.delivery ?? "paste";
   const createOptionSubject = Boolean(promptSubject);
   const createOptionAdditional = Boolean(additionalInstructions);
   const createOptionStudyMaterial = Boolean(typedStudyMaterial);
@@ -49,7 +49,9 @@ export function buildStudyForgePrompt(options: StudyForgePromptOptions = {}): st
  const extra=(createOptionAdditional&&additionalInstructions.trim())?`\nUSER'S ADDITIONAL INSTRUCTIONS:\n${additionalInstructions.trim()}\nFollow these only when they do not conflict with the required TSV format, source-grounding rules, or card-quality rules.`:"";
  const delivery=importMethod==="file"
   ? `Create a downloadable UTF-8 .txt file containing the final StudyDeck-v1 document. The file must contain ONLY the exact StudyDeck-v1 content defined below. Do not put it inside Markdown fences.`
-  : `Return ONLY the final StudyDeck-v1 document as plain text. The user will copy your response directly into StudyForge's Paste / Type field.`;
+  : importMethod==="ai"
+    ? `Return ONLY the final StudyDeck-v1 document as plain text. Gemini is the producer; StudyForge will validate and normalize the response before any card is stored.`
+    : `Return ONLY the final StudyDeck-v1 document as plain text. The user will copy your response directly into StudyForge's Paste / Type field.`;
  return `#format:studydeck-v1
 #separator:Tab
 #columns:Deck\tLesson\tFront\tBack\tExplanation\tHint 1\tHint 2\tHint 3\tTags
