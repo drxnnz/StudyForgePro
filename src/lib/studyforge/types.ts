@@ -1,5 +1,5 @@
 export type ViewName =
-  | "home" | "library" | "trash" | "help" | "create" | "processing"
+  | "home" | "library" | "import" | "ai" | "trash" | "help" | "create" | "processing"
   | "generated-preview" | "detail" | "session-config" | "study" | "results";
 
 export type QuestionType = "mcq" | "tf" | "type" | "flashcard";
@@ -105,6 +105,6 @@ export interface ToastItem {
 }
 
 export const VIEW_ORDER: Record<ViewName, number> = {
-  home: 0, library: 1, trash: 2, help: 3, create: 4, processing: 5,
+  home: 0, library: 1, import: 2, ai: 3, trash: 4, help: 5, create: 6, processing: 7,
   "generated-preview": 6, detail: 7, "session-config": 8, study: 9, results: 10,
 };

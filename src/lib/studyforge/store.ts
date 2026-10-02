@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { INITIAL_SETS, INITIAL_TRASH, flattenQuestions, correctLabel } from "./data";
+import { parseStudyDeckCsv, rowsToStudySet } from "./studydeck";
 import { normalizeAnswer } from "@/lib/utils";
 import type {
   CreateMethod, LearningRecord, Mastery, ModalName, Question, SessionConfig,
@@ -48,6 +49,7 @@ interface AppStore {
   mockDeleteSet: (id: string) => void;
   duplicateSet: (id: string) => void;
   importStudyDeckText: (text: string, title?: string) => boolean;
+  addStudySet: (studySet: StudySet, message?: string) => void;
   restoreTrashSet: (id: string) => void;
   permanentlyDeleteTrashSet: (id: string) => void;
   emptyTrash: () => void;
@@ -173,16 +175,21 @@ export const useAppStore = create<AppStore>()(persist((set, get) => ({
     set({ studySets: [copy, ...get().studySets] }); get().showToast("Study set duplicated.");
   },
   importStudyDeckText: (text, title = "Imported StudyDeck") => {
-    const lines = text.split(/\r?\n/).filter((line) => line.trim());
-    if (lines.length < 2) { get().showToast("Import needs a header row and at least one card.", "error"); return false; }
-    const parse = (line: string) => { const out: string[] = []; let cur = "", quoted = false; for (let i = 0; i < line.length; i++) { const c = line[i]; if (c === '"' && line[i + 1] === '"' && quoted) { cur += '"'; i++; } else if (c === '"') quoted = !quoted; else if (c === ',' && !quoted) { out.push(cur); cur = ""; } else cur += c; } out.push(cur); return out; };
-    const header = parse(lines[0]).map((x) => x.trim().toLowerCase()); const required = ["deck", "lesson", "front", "back", "explanation", "hint 1", "hint 2", "hint 3", "tags"];
-    if (!required.every((x) => header.includes(x))) { get().showToast("Import header must use the 9-column StudyDeck format.", "error"); return false; }
-    const idx = (name: string) => header.indexOf(name); const lessons = new Map<string, import("./types").Lesson>();
-    for (const line of lines.slice(1)) { const cells = parse(line); const lessonTitle = cells[idx("lesson")] || "Imported Lesson"; let lesson = lessons.get(lessonTitle); if (!lesson) { lesson = { id: `import_lesson_${Date.now()}_${lessons.size}`, title: lessonTitle, expanded: true, questions: [] }; lessons.set(lessonTitle, lesson); } const tags = (cells[idx("tags")] || "").split("|").map((x) => x.trim()).filter(Boolean); const type = tags.find((x) => x.startsWith("tf:")) ? "tf" : (cells[idx("hint 1")] || cells[idx("hint 2")] || cells[idx("hint 3")]) && (cells[idx("back")] || "").includes("|") ? "mcq" : "type"; const q: Question = { id: `import_q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, type, prompt: cells[idx("front")] || "", choices: type === "tf" ? ["True", "False"] : [], correctAnswer: type === "tf" ? ((cells[idx("back")] || "").toLowerCase() === "true" ? 0 : 1) : (cells[idx("back")] || ""), explanation: cells[idx("explanation")] || "", mastery: "needs-review", hints: [cells[idx("hint 1")] || "", cells[idx("hint 2")] || "", cells[idx("hint 3")] || ""].filter(Boolean), tags }; lesson.questions.push(q); }
-    const setId = `set_import_${Date.now()}`; const studySet: StudySet = { id: setId, title, subject: title, documentName: "Imported StudyDeck", progress: 0, totalQuestions: [...lessons.values()].reduce((n, l) => n + l.questions.length, 0), estimatedTime: "New", lastStudied: "Never", topics: [...lessons.keys()], lessons: [...lessons.values()] };
-    if (!studySet.totalQuestions) { get().showToast("No cards were found in the import.", "error"); return false; }
-    set({ studySets: [studySet, ...get().studySets], activeSetId: setId }); get().showToast(`${studySet.totalQuestions} cards imported.`); return true;
+    try {
+      const rows = parseStudyDeckCsv(text);
+      const studySet = rowsToStudySet(rows, title, "Imported StudyDeck");
+      if (!studySet.totalQuestions) throw new Error("No cards were found in the import.");
+      set({ studySets: [studySet, ...get().studySets], activeSetId: studySet.id });
+      get().showToast(`${studySet.totalQuestions} cards imported.`);
+      return true;
+    } catch (error) {
+      get().showToast(error instanceof Error ? error.message : "StudyDeck import failed.", "error");
+      return false;
+    }
+  },
+  addStudySet: (studySet, message = "Study set added to Library.") => {
+    set({ studySets: [studySet, ...get().studySets], activeSetId: studySet.id });
+    get().showToast(message);
   },
   mockDeleteSet: (id) => {
     const item = get().studySets.find((s) => s.id === id); if (!item) return;

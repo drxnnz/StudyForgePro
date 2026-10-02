@@ -2,11 +2,12 @@ import { useEffect } from "react";
 import { Sidebar, MobileHeader, MobileNav } from "./sidebar";
 import { ToastHost } from "./toast";
 import { ModalHost } from "./modals";
-import { HomeView, HelpView, LibraryView, TrashView } from "./views-home";
+import { HomeView, HelpView, LibraryView, TrashView, ImportView } from "./views-home";
 import {
   CreateView,
   GeneratedPreviewView,
   ProcessingView,
+  AiView,
 } from "./views-create";
 import { DetailView } from "./views-detail";
 import { ResultsView, SessionConfigView, StudyView } from "./views-study";
@@ -21,6 +22,10 @@ function renderView(view: ViewName) {
       return <HomeView />;
     case "library":
       return <LibraryView />;
+    case "import":
+      return <ImportView />;
+    case "ai":
+      return <AiView />;
     case "trash":
       return <TrashView />;
     case "help":
@@ -93,7 +98,7 @@ export function StudyForgeApp() {
                 : "page-in-backward absolute inset-0 overflow-y-auto sf-scroll w-full h-full px-4 sm:px-8 md:px-10 lg:px-12 py-6 sm:py-8 lg:py-12"
             }
           >
-            <div className="max-w-[1400px] mx-auto pb-16 w-full">
+            <div className="sf-page pb-16">
               {renderView(view)}
             </div>
           </div>

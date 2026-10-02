@@ -1,8 +1,10 @@
-import { BookOpen, Clock, Search, Trash2, Download, Share2, RotateCcw } from "lucide-react";
+import { BookOpen, Clock, Search, Trash2, Download, Share2, RotateCcw, Clipboard, CheckCircle } from "lucide-react";
+import { useState } from "react";
+import { buildStudyDeckPrompt, parseStudyDeckCsv, validateStudyDeckRows } from "@/lib/studyforge/studydeck";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "./empty-state";
 import { useAppStore, getSetAnalytics } from "@/lib/studyforge/store";
-import { greetingForHour, cn } from "@/lib/utils";
+import { greetingForHour } from "@/lib/utils";
 import { LibraryMenu } from "./library-menu";
 
 export function HomeView() {
@@ -33,4 +35,64 @@ export function HelpView() {
   const items = [{ q: "How does adaptive review work?", a: "StudyForge records attempts, accuracy, lapses, review count, retention, forgetting risk, and a learning state per card. Due cards can be targeted with Review due only." }, { q: "How does MCQ enrichment work?", a: "Existing source choices are preserved, then missing choices can be filled from source-grounded sibling answers ranked by lesson and tag overlap. The correct answer is never fabricated or duplicated." }, { q: "Can I recover deleted sets?", a: "Yes. Deleted sets are moved to Trash with their full snapshot and a 30-day expiration. You can restore or permanently delete them." }, { q: "What can I export?", a: "StudyForge exports a StudyDeck-compatible CSV with Deck, Lesson, Front, Back, Explanation, Hint 1, Hint 2, Hint 3, and Tags." }, { q: "What study modes are available?", a: "Multiple Choice, Type Answer, True / False, and Flashcards. Speedrun timers and due-only review can be enabled from session configuration." }];
   const filtered = items.filter((x) => !query.trim() || `${x.q} ${x.a}`.toLowerCase().includes(query.toLowerCase()));
   return <div className="max-w-[850px] mx-auto space-y-8"><header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4"><div><h1 className="text-[clamp(1.85rem,4vw,3rem)] text-fg leading-[1.12] mb-2">Help Center</h1><p className="text-muted text-lg">Search the study system and learn how its learning tools behave.</p></div><Button variant="secondary" onClick={startTour}>Guided Tour</Button></header><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search help..." className="sf-input" /> <div className="sf-card p-6 sm:p-8 space-y-6">{filtered.map((x) => <div key={x.q} className="space-y-2 border-b border-border pb-6 last:border-0 last:pb-0"><h3 className="font-sans font-semibold text-fg text-lg">{x.q}</h3><p className="text-sm text-muted leading-relaxed">{x.a}</p></div>)}{!filtered.length && <p className="text-muted text-center py-8">No help articles match that search.</p>}</div></div>;
+}
+
+export function ImportView() {
+  const importStudyDeckText = useAppStore((s) => s.importStudyDeckText);
+  const showToast = useAppStore((s) => s.showToast);
+  const [text, setText] = useState("");
+  const [title, setTitle] = useState("");
+  const [validated, setValidated] = useState(false);
+  const [previewCount, setPreviewCount] = useState(0);
+  const [previewRows, setPreviewRows] = useState<Array<{ Deck: string; Lesson: string; Front: string; Back: string }>>([]);
+
+  const validate = () => {
+    try {
+      const rows = parseStudyDeckCsv(text);
+      const result = validateStudyDeckRows(rows);
+      if (!result.valid) throw new Error(result.errors.slice(0, 3).join(" "));
+      setValidated(true);
+      setPreviewCount(rows.length);
+      setPreviewRows(rows.slice(0, 5));
+      showToast(`${rows.length} cards are ready for import.`);
+    } catch (error) {
+      setValidated(false);
+      setPreviewCount(0);
+      setPreviewRows([]);
+      showToast(error instanceof Error ? error.message : "StudyDeck validation failed.", "error");
+    }
+  };
+
+  const copyPrompt = async () => {
+    const prompt = buildStudyDeckPrompt();
+    try {
+      await navigator.clipboard.writeText(prompt);
+      showToast("StudyForge prompt copied. Paste it into Gemini, ChatGPT, Claude, or another AI.");
+    } catch {
+      showToast("Clipboard access was blocked. Select and copy the prompt manually.", "error");
+    }
+  };
+
+  return <div className="sf-stack-lg">
+    <header className="sf-page-header stagger-in">
+      <div><span className="sf-eyebrow">External AI workflow</span><h1 className="sf-title">Import StudyDeck</h1><p className="sf-subtitle">Generate the content with any AI, then bring the strict StudyDeck-v1 output back here for validation and import.</p></div>
+      <button type="button" onClick={copyPrompt} className="sf-hero-action"><Clipboard className="size-4" /> Copy Prompt</button>
+    </header>
+
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
+      <section className="sf-card p-5 sm:p-7 space-y-5">
+        <div className="flex items-start gap-3"><div className="sf-step-icon">1</div><div><h2 className="font-sans font-semibold text-lg text-fg">Paste AI output</h2><p className="text-sm text-muted mt-1">The output must contain exactly the 9 StudyDeck-v1 columns.</p></div></div>
+        <div><label className="block text-sm font-medium text-fg mb-2">Study set name</label><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. BSIT Fundamentals" className="sf-input" /></div>
+        <div><label className="block text-sm font-medium text-fg mb-2">StudyDeck CSV</label><textarea value={text} onChange={(e) => { setText(e.target.value); setValidated(false); }} rows={18} placeholder={'Deck,Lesson,Front,Back,Explanation,Hint 1,Hint 2,Hint 3,Tags\nComputer Science,Lesson 1,...'} className="sf-input resize-y min-h-[22rem] font-mono text-xs leading-relaxed" /></div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-border"><span className="text-xs text-muted">No Gemini call happens in this tab.</span><button type="button" onClick={validate} className="sf-hero-action"><CheckCircle className="size-4" /> Validate & Preview</button></div>
+        {validated && <div className="sf-preview-table-wrap"><div className="flex items-center justify-between gap-3 mb-3"><div><p className="text-xs font-bold uppercase tracking-wider text-subtle">Preview</p><p className="text-xs text-muted mt-1">Showing the first {previewRows.length} cards before creation.</p></div><span className="text-xs font-semibold text-accent">9-column schema OK</span></div><div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[720px] text-left text-xs"><thead className="bg-surface-2 text-subtle"><tr><th className="p-3 font-semibold">Lesson</th><th className="p-3 font-semibold">Front</th><th className="p-3 font-semibold">Back</th></tr></thead><tbody>{previewRows.map((row, index) => <tr key={`${row.Front}-${index}`} className="border-t border-border"><td className="p-3 text-muted">{row.Lesson}</td><td className="p-3 text-fg max-w-[360px]">{row.Front}</td><td className="p-3 text-fg max-w-[260px]">{row.Back}</td></tr>)}</tbody></table></div></div>}
+      </section>
+
+      <aside className="sf-card p-5 sm:p-6 h-fit xl:sticky xl:top-6">
+        <div className="flex items-center gap-3 mb-5"><div className="sf-step-icon">2</div><div><h2 className="font-sans font-semibold text-lg text-fg">Workflow</h2><p className="text-xs text-muted">External AI stays external.</p></div></div>
+        <ol className="space-y-4 text-sm"><li className="flex gap-3"><span className="sf-number">1</span><span className="text-muted">Copy the StudyForge prompt.</span></li><li className="flex gap-3"><span className="sf-number">2</span><span className="text-muted">Give your material to Gemini, ChatGPT, Claude, or another AI.</span></li><li className="flex gap-3"><span className="sf-number">3</span><span className="text-muted">Paste the returned StudyDeck CSV here.</span></li><li className="flex gap-3"><span className="sf-number">4</span><span className="text-muted">Validate, inspect the preview, then create the deck.</span></li></ol>
+        {validated && <div className="sf-success-panel mt-6"><CheckCircle className="size-5 shrink-0" /><div className="min-w-0"><strong>{previewCount} cards validated</strong><p>{title.trim() || "Imported StudyDeck"} is ready to add to Library.</p><button type="button" className="mt-3 text-sm font-semibold underline underline-offset-4" onClick={() => { if (importStudyDeckText(text, title.trim() || "Imported StudyDeck")) { setText(""); setValidated(false); setPreviewRows([]); } }}>Create Study Set</button></div></div>}
+      </aside>
+    </div>
+  </div>;
 }

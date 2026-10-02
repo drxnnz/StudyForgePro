@@ -5,6 +5,8 @@ import {
   CircleHelp,
   Home,
   PlusCircle,
+  Upload,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { Logo } from "./logo";
@@ -17,6 +19,8 @@ const NAV = [
   { view: "home" as const, label: "Home", icon: Home },
   { view: "library" as const, label: "Library", icon: BookOpen },
   { view: "create" as const, label: "Create", icon: PlusCircle },
+  { view: "import" as const, label: "Import", icon: Upload },
+  { view: "ai" as const, label: "AI Studio", icon: Sparkles },
 ];
 
 const SECONDARY = [
@@ -209,7 +213,9 @@ export function MobileNav() {
   const view = useAppStore((s) => s.view);
   const navigate = useAppStore((s) => s.navigate);
   const items = [
-    ...NAV,
+    { view: "home" as const, label: "Home", icon: Home },
+    { view: "library" as const, label: "Library", icon: BookOpen },
+    { view: "create" as const, label: "Create", icon: PlusCircle },
     { view: "help" as const, label: "Help", icon: CircleHelp },
   ];
 
