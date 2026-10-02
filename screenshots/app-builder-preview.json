@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "StudyForge",
+      "hasCanvas": false,
+      "bodyTextLen": 349,
+      "bodyTextHash": "11dd4f713d5e749859fed72c42800d4dbad029789d97380dbf4ec97988f5b4e2",
+      "bodyTextPrefix": "Skip to content StudyForge Home Library Create Trash Help Center",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "StudyForge",
+      "hasCanvas": false,
+      "bodyTextLen": 325,
+      "bodyTextHash": "1b4f4709210d9fa90ec2d969fcefb541610b007cb2f689aeaebb53d57222d4c6",
+      "bodyTextPrefix": "Skip to content StudyForge StudyForge Good morning. Ready to mas",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}

@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyForge - AI Study Companion</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            750: '#293548',
+                        }
+                    },
+                    maxWidth: {
+                        'app-wide': '1400px',
+                        'app-detail': '1200px',
+                        'app-study': '900px',
+                        'app-narrow': '720px'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar and utilities to match prototype feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.5);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.8);
+        }
+        /* Markdown/Editor placeholder color */
+        textarea::placeholder {
+            color: #94a3b8;
+        }
+        .dark textarea::placeholder {
+            color: #475569;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased min-h-screen selection:bg-indigo-500 selection:text-white transition-colors duration-300">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <!-- Modal Container -->
+    <div id="modal-container" class="fixed inset-0 z-50 hidden items-center justify-center pointer-events-none">
+        <div id="modal-backdrop" class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm opacity-0 transition-opacity duration-300 pointer-events-auto"></div>
+        <div id="modal-content" class="relative z-10 w-full max-w-lg scale-95 opacity-0 transition-all duration-300 pointer-events-auto max-h-[90vh] overflow-y-auto"></div>
+    </div>
+
+    <!-- App Root Layout -->
+    <div id="app" class="flex h-[100dvh] w-full overflow-hidden">
+        <!-- Application shell will be injected here -->
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // --- MOCK DATA ---
+        const MOCK_DATA = [
+            {
+                id: 'set_1',
+                title: 'Philippine History: Pre-Colonial to Spanish Era',
+                subject: 'History',
+                documentName: 'PH_History_101.pdf',
+                progress: 45,
+                totalQuestions: 25,
+                estimatedTime: '30 min',
+                lastStudied: '2 hours ago',
+                topics: ['Pre-Colonial Society', 'Arrival of Magellan', 'Spanish Colonization', 'Galleon Trade'],
+                lessons: [
+                    {
+                        id: 'l1',
+                        title: 'Pre-Colonial Period',
+                        expanded: false,
+                        questions: [
+                            {
+                                id: 'q1',
+                                type: 'mcq',
+                                prompt: 'What was the system of writing used by early Filipinos before the arrival of the Spanish?',
+                                choices: ['Alibata', 'Baybayin', 'Sanskrit', 'Cyrillic'],
+                                correctAnswer: 1,
+                                explanation: 'Baybayin is the pre-colonial ancient writing script of the Philippines. Alibata is a misnomer coined in the early 20th century.',
+                                mastery: 'needs-review',
+                                hints: ['It starts with a B.', 'It is often confused with Alibata.'],
+                                tags: ['culture', 'pre-colonial']
+                            },
+                            {
+                                id: 'q3',
+                                type: 'tf',
+                                prompt: 'The Barangay was the basic socio-political unit in the pre-colonial Philippines.',
+                                choices: ['True', 'False'],
+                                correctAnswer: 0,
+                                explanation: 'The Barangay consisted of 30 to 100 families led by a Datu.',
+                                mastery: 'mastered',
+                                hints: [],
+                                tags: ['politics']
+                            }
+                        ]
+                    },
+                    {
+                        id: 'l2',
+                        title: 'Spanish Era',
+                        expanded: true,
+                        questions: [
+                            {
+                                id: 'q2',
+                                type: 'mcq',
+                                prompt: 'Who was the Portuguese explorer who led the Spanish expedition that arrived in the Philippines in 1521?',
+                                choices: ['Miguel López de Legazpi', 'Ferdinand Magellan', 'Christopher Columbus', 'Ruy López de Villalobos'],
+                                correctAnswer: 1,
+                                explanation: 'Ferdinand Magellan arrived in Homonhon in 1521, marking the beginning of Spanish influence.',
+                                mastery: 'needs-review',
+                                hints: ['He died in Mactan.'],
+                                tags: ['exploration']
+                            },
+                            {
+                                id: 'q6',
+                                type: 'type',
+                                prompt: 'Name the trade system connecting Manila and Acapulco during the Spanish colonial period.',
+                                choices: [],
+                                correctAnswer: 'Galleon Trade',
+                                explanation: 'The Manila-Acapulco Galleon Trade was the main source of income for the colony during its early years.',
+                                mastery: 'learning',
+                                hints: ['It involves a type of large ship.'],
+                                tags: ['economics']
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'set_2',
+                title: 'Introduction to Computing (Java & Linux Basics)',
+                subject: 'Computer Science',
+                documentName: 'CS101_Midterms.docx',
+                progress: 0,
+                totalQuestions: 40,
+                estimatedTime: '45 min',
+                lastStudied: 'Never',
+                topics: ['Hardware Components', 'Linux File System', 'Java Basics', 'Object-Oriented Concepts'],
+                lessons: [
+                    {
+                        id: 'l3',
+                        title: 'Linux Basics',
+                        expanded: true,
+                        questions: [
+                            {
+                                id: 'q4',
+                                type: 'flashcard',
+                                prompt: 'Command to change directory in Linux',
+                                choices: [],
+                                correctAnswer: 'cd',
+                                explanation: 'The "cd" (change directory) command navigates the file system.',
+                                mastery: 'learning',
+                                hints: [],
+                                tags: ['commands']
+                            }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        const MOCK_TRASH = [
+            {
+                id: 'trash_1',
+                title: 'Biology 101: Cell Structure',
+                totalQuestions: 50,
+                deletedDate: '2 days ago'
+            }
+        ];
+
+        // --- CSS STYLING CONSTANTS ---
+        const clayCardClass = "bg-white dark:bg-slate-800 rounded-2xl shadow-[inset_0_2px_4px_rgba(255,255,255,0.8),0_4px_12px_rgba(15,23,42,0.04)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.05),0_4px_12px_rgba(0,0,0,0.3)] border border-slate-100/50 dark:border-slate-700/50 transition-all duration-300";
+        const buttonBaseClass = "inline-flex items-center justify-center font-medium transition-all duration-200 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900";
+        const primaryButtonClass = `${buttonBaseClass} bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_4px_rgba(79,70,229,0.3)] min-h-[44px] min-w-[44px] px-4 py-2.5`;
+        const secondaryButtonClass = `${buttonBaseClass} ${clayCardClass} hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 min-h-[44px] min-w-[44px] px-4 py-2.5`;
+        const dangerButtonClass = `${buttonBaseClass} bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl min-h-[44px] px-4 py-2.5`;
+        const inputClass = "w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-900 dark:text-white placeholder-slate-400";
+
+        // --- APPLICATION STATE ---
+        const state = {
+            theme: 'light',
+            view: 'home',
+            createMethod: null, // null = selection screen, 'manual', 'txt', 'ai'
+            studySets: MOCK_DATA,
+            trashSets: MOCK_TRASH,
+            activeSetId: null,
+            sessionConfig: { mode: 'mcq', count: 'all', speedrun: false, time: '5m' },
+            sessionState: { currentQ: 0, answers: [], score: 0, mode: 'mcq', revealed: false },
+            sidebarExpanded: true,
+            activeDropdown: null,
+            activeModal: null, 
+            modalData: null,
+            filterReview: 'all', 
+            selectedFile: null
+        };
+
+        const VIEW_ORDER = {
+            'home': 0, 'library': 1, 'trash': 2, 'help': 3, 
+            'create': 4, 'processing': 5, 'generated-preview': 6, 
+            'detail': 7, 'session-config': 8, 'study': 9, 'results': 10
+        };
+
+        let isTransitioning = false;
+
+        // --- ICON HELPERS (SVG) ---
+        function renderLogo(className = "w-8 h-8") {
+            return `
+                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="${className}">
+                    <path d="M20 80 L50 20 L80 80 Z" class="fill-indigo-500/25 dark:fill-indigo-500/30 stroke-indigo-600 dark:stroke-indigo-400" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M50 20 L50 80" class="stroke-indigo-600 dark:stroke-indigo-400" stroke-width="6" stroke-linecap="round"/>
+                    <path d="M35 50 L65 50" class="stroke-indigo-600 dark:stroke-indigo-400" stroke-width="6" stroke-linecap="round"/>
+                    <circle cx="50" cy="20" r="4" class="fill-indigo-600 dark:fill-indigo-400"/>
+                </svg>
+            `;
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('studyforge-theme');
+            if (savedTheme) {
+                state.theme = savedTheme;
+                document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+            } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                state.theme = 'dark';
+                document.documentElement.classList.add('dark');
+            }
+            
+            initApp();
+            setupEventDelegation();
+        });
+
+        function initApp() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div id="sidebar-container" class="hidden lg:flex flex-col h-full z-20 shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300"></div>
+                <div class="flex-1 flex flex-col min-w-0 h-full relative">
+                    <div id="mobile-header-container" class="lg:hidden shrink-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800"></div>
+                    <div class="hidden lg:flex pointer-events-none absolute inset-x-0 top-0 z-30 px-6 sm:px-10 lg:px-12 pt-8">
+                        <div class="max-w-[1400px] mx-auto w-full flex justify-end">
+                            <div id="desktop-theme-container" class="pointer-events-auto"></div>
+                        </div>
+                    </div>
+                    <main id="page-stage" class="flex-1 relative overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-300"></main>
+                    <div id="mobile-nav-container" class="lg:hidden shrink-0 z-20 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800"></div>
+                </div>
+            `;
+            
+            renderShell();
+            
+            const stage = document.getElementById('page-stage');
+            const page = document.createElement('div');
+            page.className = `page-container active absolute inset-0 overflow-y-auto w-full h-full px-4 sm:px-8 md:px-10 lg:px-12 py-6 sm:py-8 lg:py-12 flex flex-col z-10`;
+            page.innerHTML = `<div class="max-w-[1400px] mx-auto pb-16 flex-1 w-full" id="page-content">${renderCurrentView()}</div>`;
+            stage.appendChild(page);
+        }
+
+        // --- CORE NAVIGATION & TRANSITIONS ---
+        function navigate(newView, id = null, scrollToSection = null) {
+            if (isTransitioning) return;
+            if (id) state.activeSetId = id;
+            state.activeDropdown = null;
+            
+            if (newView === 'create') {
+                state.createMethod = null;
+            }
+
+            const oldView = state.view;
+            if (oldView === newView) {
+                renderPage(); 
+                if(scrollToSection) document.getElementById(scrollToSection)?.scrollIntoView({behavior: 'smooth'});
+                return;
+            }
+
+            const oldOrder = VIEW_ORDER[oldView] || 0;
+            const newOrder = VIEW_ORDER[newView] || 0;
+            let direction = newOrder >= oldOrder ? 'forward' : 'backward';
+            
+            if (oldView === 'results' && newView === 'library') direction = 'backward';
+            if (oldView === 'study' && (newView === 'detail' || newView === 'library')) direction = 'backward';
+            
+            state.view = newView;
+            renderShell();
+            transitionToView(direction, scrollToSection);
+        }
+
+        function transitionToView(direction, scrollToSection) {
+            isTransitioning = true;
+            const stage = document.getElementById('page-stage');
+            const oldPage = stage.querySelector('.page-container.active');
+            
+            const newPage = document.createElement('div');
+            newPage.className = `page-container absolute inset-0 overflow-y-auto w-full h-full px-4 sm:px-8 md:px-10 lg:px-12 py-6 sm:py-8 lg:py-12 flex flex-col z-20 bg-slate-50 dark:bg-slate-950`;
+            newPage.innerHTML = `<div class="max-w-[1400px] mx-auto pb-16 flex-1 w-full" id="page-content">${renderCurrentView()}</div>`;
+            
+            stage.appendChild(newPage);
+            
+            const isDesktop = window.innerWidth >= 1024; 
+            const axis = isDesktop ? 'Y' : 'X';
+            const startOffset = direction === 'forward' ? '100%' : '-100%';
+            const endOffsetOld = direction === 'forward' ? '-100%' : '100%';
+            
+            newPage.style.transform = `translate${axis}(${startOffset})`;
+            newPage.style.opacity = '0.9';
+            void newPage.offsetWidth; 
+            
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const duration = prefersReducedMotion ? 0 : 350;
+            const easing = 'cubic-bezier(0.25, 1, 0.4, 1)'; 
+            
+            if (oldPage) {
+                oldPage.style.transition = `transform ${duration}ms ${easing}, opacity ${duration}ms ease`;
+                oldPage.style.transform = `translate${axis}(${endOffsetOld})`;
+                oldPage.style.opacity = '0.5';
+                oldPage.style.pointerEvents = 'none'; 
+            }
+            
+            newPage.style.transition = `transform ${duration}ms ${easing}, opacity ${duration}ms ease`;
+            newPage.style.transform = `translate${axis}(0)`;
+            newPage.style.opacity = '1';
+            
+            newPage.classList.add('active');
+            if (oldPage) oldPage.parentNode.removeChild(oldPage);
+            
+            setTimeout(() => {
+                if (oldPage && oldPage.parentNode) oldPage.parentNode.removeChild(oldPage);
+                newPage.style.transition = '';
+                newPage.style.transform = '';
+                isTransitioning = false;
+                if(scrollToSection) {
+                    const el = document.getElementById(scrollToSection);
+                    if(el) el.scrollIntoView({behavior: 'smooth'});
+                }
+            }, duration);
+        }
+
+        function renderPage() {
+            const content = document.getElementById('page-content');
+            if (content) content.innerHTML = renderCurrentView();
+        }
+
+        function renderShell() {
+            const sidebarBtn = document.getElementById('sidebar-container');
+            if (sidebarBtn) {
+                const expanded = state.sidebarExpanded;
+                sidebarBtn.className = `hidden lg:flex flex-col h-full z-20 shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ${expanded ? 'w-64' : 'w-20'}`;
+                sidebarBtn.innerHTML = renderSidebarContent(expanded);
+            }
+            
+            const mobHeader = document.getElementById('mobile-header-container');
+            if (mobHeader) mobHeader.innerHTML = renderHeader();
+            const mobNav = document.getElementById('mobile-nav-container');
+            if (mobNav) mobNav.innerHTML = renderMobileNav();
+            const desktopThemeContainer = document.getElementById('desktop-theme-container');
+            if (desktopThemeContainer) {
+                desktopThemeContainer.innerHTML = `
+                    <button data-action="toggle-theme" class="flex items-center justify-center p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-md bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm min-h-[44px] min-w-[44px]" title="Toggle Theme">
+                        ${state.theme === 'dark' ? 
+                        '<svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>' : 
+                        '<svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>'}
+                    </button>`;
+            }
+        }
+
+        // --- COMPONENTS & UTILS ---
+        function renderEmptyState(icon, title, desc, actionHtml = '') {
+            return `
+                <div class="flex flex-col items-center justify-center py-16 px-4 text-center">
+                    <div class="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center mb-6 text-slate-400 dark:text-slate-500">
+                        ${icon}
+                    </div>
+                    <h3 class="text-xl font-semibold text-slate-900 dark:text-white mb-2">${title}</h3>
+                    <p class="text-slate-500 dark:text-slate-400 max-w-sm mb-8">${desc}</p>
+                    ${actionHtml}
+                </div>
+            `;
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toastEl = document.createElement('div');
+            const bgClass = type === 'info' ? 'bg-indigo-600 text-white' : (type === 'error' ? 'bg-red-600 text-white' : 'bg-slate-900 dark:bg-slate-800 text-white border border-slate-700');
+            toastEl.className = `${bgClass} px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-2 pointer-events-auto flex items-center justify-between`;
+            toastEl.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toastEl);
+            
+            setTimeout(() => toastEl.classList.remove('opacity-0', 'translate-y-2'), 10);
+            setTimeout(() => {
+                toastEl.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toastEl.remove(), 300);
+            }, 3000);
+        }
+
+        function openModal(modalName, data = null) {
+            state.activeModal = modalName;
+            state.modalData = data;
+            const container = document.getElementById('modal-container');
+            const content = document.getElementById('modal-content');
+            const backdrop = document.getElementById('modal-backdrop');
+            
+            content.innerHTML = renderModalContent(modalName);
+            container.classList.remove('hidden');
+            container.classList.add('flex');
+            
+            setTimeout(() => {
+                backdrop.classList.remove('opacity-0');
+                content.classList.remove('scale-95', 'opacity-0');
+            }, 10);
+        }
+
+        function closeModal() {
+            const container = document.getElementById('modal-container');
+            const content = document.getElementById('modal-content');
+            const backdrop = document.getElementById('modal-backdrop');
+            
+            backdrop.classList.add('opacity-0');
+            content.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(() => {
+                container.classList.add('hidden');
+                container.classList.remove('flex');
+                state.activeModal = null;
+                state.modalData = null;
+            }, 300);
+        }
+
+        function renderModalContent(modalName) {
+            if (modalName === 'editQuestion') {
+                return `
+                    <div class="${clayCardClass} p-6 space-y-4">
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Edit Question</h3>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Question / Front</label>
+                            <textarea rows="2" class="${inputClass}">What was the system of writing used by early Filipinos?</textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Answer / Back</label>
+                            <input type="text" value="Baybayin" class="${inputClass}" />
+                        </div>
+                        <div class="flex justify-end gap-2 pt-2">
+                            <button data-action="close-modal" class="${secondaryButtonClass}">Cancel</button>
+                            <button data-action="close-modal" class="${primaryButtonClass}">Save Changes</button>
+                        </div>
+                    </div>
+                `;
+            } else if (modalName === 'deleteConfirm') {
+                return `
+                    <div class="${clayCardClass} p-6 space-y-4 text-center">
+                        <div class="w-12 h-12 rounded-full bg-red-50 dark:bg-red-900/30 text-red-600 flex items-center justify-center mx-auto">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Delete Item?</h3>
+                        <p class="text-sm text-slate-500">This action cannot be undone.</p>
+                        <div class="flex justify-center gap-3 pt-2">
+                            <button data-action="close-modal" class="${secondaryButtonClass}">Cancel</button>
+                            <button data-action="close-modal" class="${dangerButtonClass}">Delete</button>
+                        </div>
+                    </div>
+                `;
+            } else if (modalName === 'generationOptions') {
+                return `
+                    <div class="${clayCardClass} p-6 space-y-4">
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Generation Options</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Question Count</label>
+                                <select class="${inputClass}">
+                                    <option>25 Questions (Recommended)</option>
+                                    <option>10 Questions</option>
+                                    <option>50 Questions</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Focus Types</label>
+                                <div class="space-y-2 mt-1">
+                                    <label class="flex items-center text-sm text-slate-700 dark:text-slate-300"><input type="checkbox" checked class="mr-2 rounded text-indigo-600"> Multiple Choice</label>
+                                    <label class="flex items-center text-sm text-slate-700 dark:text-slate-300"><input type="checkbox" checked class="mr-2 rounded text-indigo-600"> True / False</label>
+                                    <label class="flex items-center text-sm text-slate-700 dark:text-slate-300"><input type="checkbox" checked class="mr-2 rounded text-indigo-600"> Flashcards</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-2 pt-2">
+                            <button data-action="close-modal" class="${primaryButtonClass}">Apply Options</button>
+                        </div>
+                    </div>
+                `;
+            }
+            return '';
+        }
+
+        // --- SHELL COMPONENTS ---
+        function renderSidebarContent(expanded) {
+            return `
+                <div class="p-5 flex items-center ${expanded ? 'justify-between' : 'justify-center'} border-b border-slate-100 dark:border-slate-800/60 relative">
+                    <div class="flex items-center space-x-3 cursor-pointer overflow-hidden" data-nav="home">
+                        <div class="flex-shrink-0">${renderLogo("w-8 h-8")}</div>
+                        <span class="font-bold text-lg tracking-tight text-slate-900 dark:text-white transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0 w-0 hidden'}">StudyForge</span>
+                    </div>
+                    ${expanded ? `
+                        <button data-action="toggle-sidebar" class="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+                        </button>` : `
+                        <button data-action="toggle-sidebar" class="absolute inset-0 w-full h-full flex items-center justify-center bg-white/80 dark:bg-slate-900/80 opacity-0 hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+                        </button>`}
+                </div>
+                <nav class="flex-1 p-4 space-y-1.5 overflow-y-auto">
+                    ${renderSidebarItem('home', 'Home', '<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>', expanded)}
+                    ${renderSidebarItem('library', 'Library', '<path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>', expanded)}
+                    ${renderSidebarItem('create', 'Create', '<path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>', expanded)}
+                    <div class="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800/60"></div>
+                    ${renderSidebarItem('trash', 'Trash', '<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>', expanded)}
+                    ${renderSidebarItem('help', 'Help Center', '<path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>', expanded)}
+                </nav>
+            `;
+        }
+
+        function renderSidebarItem(viewName, label, svgPath, expanded) {
+            const active = state.view === viewName;
+            const activeClass = active ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium';
+            return `
+                <button data-nav="${viewName}" title="${label}" class="w-full flex items-center ${expanded ? 'px-3.5 py-3 space-x-3' : 'justify-center p-3'} rounded-xl transition-colors min-h-[44px] ${activeClass}">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">${svgPath}</svg>
+                    <span class="${expanded ? 'opacity-100 text-sm' : 'opacity-0 w-0 hidden'} transition-opacity">${label}</span>
+                </button>
+            `;
+        }
+
+        function renderHeader() {
+            return `
+                <header class="flex items-center justify-between px-4 sm:px-6 py-3.5">
+                    <div class="flex items-center space-x-2.5 cursor-pointer min-h-[44px] items-center" data-nav="home">
+                        ${renderLogo("w-7 h-7")}
+                        <span class="font-bold text-base tracking-tight text-slate-900 dark:text-white">StudyForge</span>
+                    </div>
+                    <button data-action="toggle-theme" class="p-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
+                        ${state.theme === 'dark' ? '<svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>' : '<svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>'}
+                    </button>
+                </header>
+            `;
+        }
+
+        function renderMobileNav() {
+            return `
+                <nav class="flex items-center justify-around py-2.5 px-2">
+                    ${renderMobileNavItem('home', 'Home', '<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>')}
+                    ${renderMobileNavItem('library', 'Library', '<path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>')}
+                    ${renderMobileNavItem('create', 'Create', '<path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>')}
+                    ${renderMobileNavItem('help', 'Help', '<path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>')}
+                </nav>
+            `;
+        }
+
+        function renderMobileNavItem(viewName, label, svgPath) {
+            const active = state.view === viewName;
+            const activeClass = active ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 font-medium';
+            return `
+                <button data-nav="${viewName}" class="flex flex-col items-center py-1.5 px-3 ${activeClass} transition-colors min-h-[44px] min-w-[44px] justify-center">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">${svgPath}</svg>
+                    <span class="text-[10px]">${label}</span>
+                </button>
+            `;
+        }
+
+        // --- VIEWS ---
+        function renderCurrentView() {
+            switch (state.view) {
+                case 'home': return renderHomeView();
+                case 'library': return renderLibraryView();
+                case 'trash': return renderTrashView();
+                case 'help': return renderHelpView();
+                case 'create': return renderCreateView();
+                case 'processing': return renderProcessingView();
+                case 'generated-preview': return renderGeneratedPreviewView();
+                case 'detail': return renderStudySetDetailView();
+                case 'session-config': return renderSessionConfigView();
+                case 'study': return renderStudySessionView();
+                case 'results': return renderResultsView();
+                default: return renderHomeView();
+            }
+        }
+
+        function renderHomeView() {
+            return `
+                <div class="space-y-8 max-w-[1400px] mx-auto">
+                    <header class="mb-8 lg:mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                        <div>
+                            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">Good afternoon.</h1>
+                            <p class="text-slate-500 dark:text-slate-400 text-lg sm:text-xl">Ready to master something new today?</p>
+                        </div>
+                    </header>
+                    <section class="space-y-6">
+                        <div class="flex items-center justify-between mb-5">
+                            <h2 class="text-xl font-semibold text-slate-900 dark:text-white">Continue Studying</h2>
+                            <button data-nav="library" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium">View all</button>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            ${state.studySets.map(set => `
+                                <div data-nav="detail" data-id="${set.id}" class="${clayCardClass} p-6 cursor-pointer hover:-translate-y-1 flex flex-col justify-between h-full">
+                                    <div>
+                                        <div class="flex justify-between items-start mb-4">
+                                            <div class="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                                            </div>
+                                            <span class="text-xs font-semibold px-2.5 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">${set.subject}</span>
+                                        </div>
+                                        <h3 class="font-semibold text-lg text-slate-900 dark:text-white mb-1 line-clamp-1">${set.title}</h3>
+                                        <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 truncate">${set.documentName}</p>
+                                    </div>
+                                    <div class="space-y-2 pt-4 border-t border-slate-100 dark:border-slate-700/60">
+                                        <div class="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                                            <span>Progress</span><span>${set.progress}%</span>
+                                        </div>
+                                        <div class="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                            <div class="h-full bg-indigo-600 rounded-full" style="width: ${set.progress}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </section>
+                </div>
+            `;
+        }
+
+        function renderLibraryView() {
+            if(state.studySets.length === 0) {
+                return renderEmptyState(
+                    '<svg class="w-10 h-10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>',
+                    'Your Library is Empty',
+                    'Create your first study set to start learning efficiently.',
+                    `<button data-nav="create" class="${primaryButtonClass}">Create Study Set</button>`
+                );
+            }
+
+            return `
+                <div class="space-y-8 max-w-[1400px] mx-auto">
+                    <header class="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8 lg:mb-10 lg:pr-16">
+                        <div>
+                            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">Library</h1>
+                            <p class="text-slate-500 dark:text-slate-400 text-lg">All your generated study materials.</p>
+                        </div>
+                        <div class="relative w-full md:w-80 shrink-0">
+                            <svg class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            <input type="text" placeholder="Search sets..." class="${inputClass} pl-10" />
+                        </div>
+                    </header>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+                        ${state.studySets.map(set => `
+                            <div class="${clayCardClass} p-6 sm:p-8 flex flex-col h-full relative group">
+                                <div class="absolute top-6 right-6">
+                                    <button data-action="toggle-menu" data-id="${set.id}" class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors">
+                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14a2 2 0 100-4 2 2 0 000 4zm-7 0a2 2 0 100-4 2 2 0 000 4zm14 0a2 2 0 100-4 2 2 0 000 4z"></path></svg>
+                                    </button>
+                                    ${state.activeDropdown === set.id ? `
+                                        <div class="absolute right-0 mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 py-1 z-20">
+                                            <button data-nav="session-config" data-id="${set.id}" class="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center"><svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Study</button>
+                                            <button data-nav="detail" data-id="${set.id}" data-scroll="questions-review" class="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center"><svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Review / Edit</button>
+                                            <button data-action="unimplemented" class="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center"><svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicate</button>
+                                            <button data-action="unimplemented" class="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center"><svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> Export</button>
+                                            <div class="border-t border-slate-100 dark:border-slate-700/50 my-1"></div>
+                                            <button data-action="mock-delete" data-id="${set.id}" class="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center"><svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Delete</button>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <div class="flex-1 cursor-pointer" data-nav="detail" data-id="${set.id}">
+                                    <span class="text-xs sm:text-sm font-semibold px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md mb-4 inline-block tracking-wide">${set.subject}</span>
+                                    <h3 class="font-semibold text-lg sm:text-xl text-slate-900 dark:text-white mb-2 line-clamp-2 leading-snug">${set.title}</h3>
+                                    <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 flex items-center mb-6">
+                                        <svg class="w-4 h-4 mr-1.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Last studied: ${set.lastStudied}
+                                    </p>
+                                </div>
+                                <div class="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center mt-auto cursor-pointer" data-nav="detail" data-id="${set.id}">
+                                    <span class="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">${set.totalQuestions} items</span>
+                                    <div class="flex -space-x-1">
+                                        <div class="w-3 h-3 rounded-full border border-white dark:border-slate-800 ${set.progress > 0 ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-600'}"></div>
+                                        <div class="w-3 h-3 rounded-full border border-white dark:border-slate-800 ${set.progress > 30 ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-600'}"></div>
+                                        <div class="w-3 h-3 rounded-full border border-white dark:border-slate-800 ${set.progress > 80 ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-600'}"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- TWO-STEP CREATION FLOW ---
+        function renderCreateView() {
+            if (!state.createMethod) {
+                return `
+                    <div class="max-w-[1000px] mx-auto space-y-8">
+                        <header class="text-center mb-10">
+                            <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">Create Study Material</h1>
+                            <p class="text-slate-500 dark:text-slate-400 text-lg">Choose how you want to create your study material.</p>
+                        </header>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <!-- Manual Choice Card -->
+                            <div data-action="select-create-method" data-val="manual" class="${clayCardClass} p-6 sm:p-8 cursor-pointer hover:-translate-y-1 flex flex-col justify-between text-left group">
+                                <div>
+                                    <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-6 group-hover:scale-110 transition-transform">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                    </div>
+                                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Manual</h3>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Create questions and answers yourself.</p>
+                                </div>
+                                <div class="mt-8 flex items-center text-sm font-semibold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform">
+                                    Get started <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </div>
+                            </div>
+
+                            <!-- TXT / Paste Choice Card -->
+                            <div data-action="select-create-method" data-val="txt" class="${clayCardClass} p-6 sm:p-8 cursor-pointer hover:-translate-y-1 flex flex-col justify-between text-left group">
+                                <div>
+                                    <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-6 group-hover:scale-110 transition-transform">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                    </div>
+                                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">TXT / Paste</h3>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Paste your study material and turn it into study content.</p>
+                                </div>
+                                <div class="mt-8 flex items-center text-sm font-semibold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform">
+                                    Get started <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </div>
+                            </div>
+
+                            <!-- AI Choice Card -->
+                            <div data-action="select-create-method" data-val="ai" class="${clayCardClass} p-6 sm:p-8 cursor-pointer hover:-translate-y-1 flex flex-col justify-between text-left group">
+                                <div>
+                                    <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-6 group-hover:scale-110 transition-transform">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                    </div>
+                                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">AI</h3>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Upload a document and generate an interactive study quiz.</p>
+                                </div>
+                                <div class="mt-8 flex items-center text-sm font-semibold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform">
+                                    Get started <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="max-w-[900px] mx-auto space-y-6">
+                    <div class="flex items-center mb-2">
+                        <button data-action="back-to-create" class="group flex items-center text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors min-h-[44px]">
+                            <svg class="w-4 h-4 mr-1.5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Back to Create
+                        </button>
+                    </div>
+
+                    ${state.createMethod === 'manual' ? renderManualWorkflow() : (state.createMethod === 'txt' ? renderTxtWorkflow() : renderAiWorkflow())}
+                </div>
+            `;
+        }
+
+        function renderManualWorkflow() {
+            return `
+                <div class="space-y-6">
+                    <header class="mb-4">
+                        <h1 class="text-3xl font-bold text-slate-900 dark:text-white tracking-tight mb-1">Manual</h1>
+                        <p class="text-slate-500 dark:text-slate-400">Create questions and answers yourself.</p>
+                    </header>
+                    <div class="${clayCardClass} p-6 sm:p-8 space-y-5">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Subject / Study Set</label>
+                                <div class="flex gap-2">
+                                    <input type="text" placeholder="e.g. History 101" class="${inputClass}" />
+                                    <button class="${secondaryButtonClass} px-3" title="New Subject"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Lesson</label>
+                                <div class="flex gap-2">
+                                    <select class="${inputClass} appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M6%209l6%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_1rem_center] bg-[length:1.2em_1.2em] pr-10">
+                                        <option>Lesson 1 - Pre-Colonial</option>
+                                    </select>
+                                    <button class="${secondaryButtonClass} px-3" title="New Lesson"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="border-t border-slate-200 dark:border-slate-700 pt-5 space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Question / Front</label>
+                                <textarea rows="3" placeholder="Type your question here..." class="${inputClass} resize-none"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Answer / Back</label>
+                                <textarea rows="2" placeholder="Type the correct answer..." class="${inputClass} resize-none"></textarea>
+                            </div>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center">
+                                    <svg class="w-4 h-4 mr-1 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    Show Optional Fields (Explanation, Hints, Tags)
+                                </summary>
+                                <div class="pt-4 space-y-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Explanation</label>
+                                        <textarea rows="2" class="${inputClass} resize-none text-sm"></textarea>
+                                    </div>
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div><label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Hint 1</label><input type="text" class="${inputClass} text-sm py-2" /></div>
+                                        <div><label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Hint 2</label><input type="text" class="${inputClass} text-sm py-2" /></div>
+                                        <div><label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Tags (comma separated)</label><input type="text" class="${inputClass} text-sm py-2" /></div>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                        <div class="flex justify-end pt-2">
+                            <button data-action="mock-add-card" class="${primaryButtonClass}"><svg class="w-5 h-5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Card</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">Current Lesson Cards (2)</h3>
+                        <div class="space-y-3">
+                            <div class="${clayCardClass} p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div>
+                                    <p class="font-medium text-slate-900 dark:text-white mb-1">What was the system of writing used by early Filipinos?</p>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400">A: Baybayin</p>
+                                </div>
+                                <div class="flex gap-2 shrink-0">
+                                    <button data-action="open-modal" data-modal="editQuestion" class="${secondaryButtonClass} p-2 min-w-0" title="Edit"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button data-action="open-modal" data-modal="deleteConfirm" class="inline-flex items-center justify-center font-medium transition-all duration-200 active:scale-95 text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl min-h-[44px] min-w-[44px] p-2" title="Delete"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTxtWorkflow() {
+            return `
+                <div class="${clayCardClass} p-6 sm:p-8 space-y-6">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-1">TXT / Paste</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400">Paste your study material and turn it into study content.</p>
+                    </div>
+                    <div class="space-y-4">
+                        <textarea rows="12" placeholder="Paste notes, reviewers, lecture material, or raw text here..." class="${inputClass} resize-y"></textarea>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Subject / Study Set</label>
+                                <input type="text" placeholder="e.g. Computer Science 101" class="${inputClass}" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Lesson Name</label>
+                                <input type="text" placeholder="e.g. Introduction to Linux" class="${inputClass}" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-700/60">
+                        <button data-nav="detail" data-id="set_1" class="${primaryButtonClass} px-8"><svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Import & Create</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAiWorkflow() {
+            return `
+                <div class="space-y-6">
+                    <div class="${clayCardClass} p-6 sm:p-8 space-y-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-1">AI Study Quiz</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">Upload your study material and let AI turn it into an interactive study set.</p>
+                        </div>
+                        
+                        ${!state.selectedFile ? `
+                            <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 p-12 sm:p-16 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer hover:border-indigo-500 transition-colors bg-slate-50/50 dark:bg-slate-900/30" data-action="mock-select-file">
+                                <div class="w-16 h-16 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mb-4 text-indigo-600 dark:text-indigo-400 shadow-sm">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                </div>
+                                <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-1">Drag and drop documents</h3>
+                                <p class="text-sm text-slate-400 mb-4">Supported formats: PDF, DOCX, TXT</p>
+                                <button class="${secondaryButtonClass}">Browse Files</button>
+                            </div>
+                        ` : `
+                            <div class="p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <p class="font-medium text-slate-900 dark:text-white">PH_History_101.pdf</p>
+                                        <p class="text-xs text-slate-500">PDF • 2.4 MB</p>
+                                    </div>
+                                </div>
+                                <button data-action="mock-remove-file" class="p-2 text-slate-400 hover:text-red-500 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                            </div>
+                        `}
+
+                        <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-700/60">
+                            <button data-action="open-modal" data-modal="generationOptions" class="${secondaryButtonClass}">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> Generation Options
+                            </button>
+                            <button data-nav="processing" class="${primaryButtonClass} px-8">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> Generate Study Quiz
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderProcessingView() {
+            setTimeout(() => {
+                if (state.view === 'processing' && !isTransitioning) navigate('generated-preview');
+            }, 2500);
+
+            return `
+                <div class="max-w-[720px] mx-auto text-center py-16 space-y-8">
+                    <div class="w-24 h-24 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mx-auto text-indigo-600 dark:text-indigo-400 animate-pulse shadow-sm">
+                        <svg class="w-12 h-12 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </div>
+                    <div class="space-y-3">
+                        <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Analyzing Material...</h2>
+                        <p class="text-slate-500 dark:text-slate-400 text-lg">Extracting key concepts and generating intelligent study questions.</p>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden max-w-md mx-auto">
+                        <div class="h-full bg-indigo-600 rounded-full animate-[pulse_1.5s_infinite]" style="width: 70%"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderGeneratedPreviewView() {
+            return `
+                <div class="max-w-[900px] mx-auto space-y-8">
+                    <div class="text-center space-y-3 mb-10">
+                        <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 mb-2">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Study Set Generated</h1>
+                        <p class="text-slate-500 dark:text-slate-400">Please review the extracted material before studying.</p>
+                    </div>
+
+                    <div class="${clayCardClass} overflow-hidden">
+                        <div class="p-6 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/50">
+                            <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-1">Philippine History: Pre-Colonial to Spanish Era</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400 flex items-center mb-4">Source: PH_History_101.pdf</p>
+                            <div class="flex gap-4 text-sm font-medium">
+                                <span class="bg-white dark:bg-slate-700 px-3 py-1 rounded-md border border-slate-200 dark:border-slate-600">25 Questions</span>
+                                <span class="bg-white dark:bg-slate-700 px-3 py-1 rounded-md border border-slate-200 dark:border-slate-600">2 Lessons</span>
+                            </div>
+                        </div>
+                        
+                        <div class="p-6 space-y-6">
+                            <div>
+                                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 border-b border-slate-100 dark:border-slate-700 pb-2">Lesson 1 - Pre-Colonial Period</h3>
+                                <div class="space-y-3">
+                                    <div class="text-sm">
+                                        <p class="font-medium text-slate-900 dark:text-white"><span class="text-indigo-500 mr-2">Q1</span>What was the system of writing used by early Filipinos?</p>
+                                    </div>
+                                    <div class="text-sm">
+                                        <p class="font-medium text-slate-900 dark:text-white"><span class="text-indigo-500 mr-2">Q2</span>The Barangay was the basic socio-political unit.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 border-b border-slate-100 dark:border-slate-700 pb-2">Lesson 2 - Spanish Era</h3>
+                                <div class="space-y-3">
+                                    <div class="text-sm">
+                                        <p class="font-medium text-slate-900 dark:text-white"><span class="text-indigo-500 mr-2">Q3</span>Who led the Spanish expedition in 1521?</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+                        <div class="flex gap-3 w-full sm:w-auto">
+                            <button data-nav="detail" data-id="set_1" class="${secondaryButtonClass} w-full sm:w-auto">Continue Editing</button>
+                            <button class="${secondaryButtonClass} w-full sm:w-auto text-red-600 dark:text-red-400">Regenerate</button>
+                        </div>
+                        <button data-nav="session-config" data-id="set_1" class="${primaryButtonClass} w-full sm:w-auto px-8">Start Studying</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStudySetDetailView() {
+            const set = state.studySets.find(s => s.id === state.activeSetId) || state.studySets[0];
+            return `
+                <div class="max-w-[1000px] mx-auto space-y-8">
+                    <div class="flex items-center justify-start mb-6 lg:mb-8">
+                        <button data-nav="library" class="group flex items-center text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors min-h-[44px]">
+                            <svg class="w-4 h-4 mr-1.5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Back to Library
+                        </button>
+                    </div>
+
+                    <div class="${clayCardClass} p-8 sm:p-10 space-y-8">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                            <div>
+                                <span class="text-xs font-semibold px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full mb-3 inline-block tracking-wide">${set.subject}</span>
+                                <h1 class="text-2xl sm:text-4xl font-bold text-slate-900 dark:text-white">${set.title}</h1>
+                            </div>
+                            <button data-nav="session-config" data-id="${set.id}" class="${primaryButtonClass} px-8 py-3.5 text-base flex items-center shadow-md shrink-0">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Start Session
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-6 border-t border-slate-100 dark:border-slate-700/60">
+                            <div>
+                                <span class="text-xs text-slate-400 block mb-1 font-medium">Questions</span>
+                                <span class="text-lg font-semibold text-slate-900 dark:text-white">${set.totalQuestions}</span>
+                            </div>
+                            <div>
+                                <span class="text-xs text-slate-400 block mb-1 font-medium">Est. Time</span>
+                                <span class="text-lg font-semibold text-slate-900 dark:text-white">${set.estimatedTime}</span>
+                            </div>
+                            <div>
+                                <span class="text-xs text-slate-400 block mb-1 font-medium">Progress</span>
+                                <span class="text-lg font-semibold text-slate-900 dark:text-white">${set.progress}%</span>
+                            </div>
+                            <div>
+                                <span class="text-xs text-slate-400 block mb-1 font-medium">Source</span>
+                                <span class="text-lg font-semibold text-slate-900 dark:text-white truncate block">${set.documentName}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Topics Covered</h2>
+                        <div class="flex flex-wrap gap-2">
+                            ${set.topics.map(t => `<span class="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-300 rounded-lg">${t}</span>`).join('')}
+                        </div>
+                    </div>
+
+                    <!-- QUESTIONS & REVIEW SECTION -->
+                    <div id="questions-review" class="pt-8">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                            <div>
+                                <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">Questions & Review</h2>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">Inspect, edit, and understand generated material.</p>
+                            </div>
+                            <div class="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-full sm:w-auto overflow-x-auto">
+                                <button data-action="set-filter" data-val="all" class="${state.filterReview === 'all' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'} px-4 py-1.5 rounded-md text-sm font-medium min-w-[max-content]">All</button>
+                                <button data-action="set-filter" data-val="needs-review" class="${state.filterReview === 'needs-review' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'} px-4 py-1.5 rounded-md text-sm font-medium min-w-[max-content]">Needs Review</button>
+                                <button data-action="set-filter" data-val="mastered" class="${state.filterReview === 'mastered' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'} px-4 py-1.5 rounded-md text-sm font-medium min-w-[max-content]">Mastered</button>
+                            </div>
+                        </div>
+                        
+                        <div class="relative mb-6">
+                            <svg class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            <input type="text" placeholder="Search questions..." class="${inputClass} pl-10 bg-white" />
+                        </div>
+
+                        <div class="space-y-4">
+                            ${set.lessons.map(lesson => renderLessonSection(lesson)).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLessonSection(lesson) {
+            let qs = lesson.questions;
+            if (state.filterReview !== 'all') qs = qs.filter(q => q.mastery === state.filterReview);
+            if (qs.length === 0) return '';
+
+            return `
+                <div class="${clayCardClass} overflow-hidden">
+                    <button data-action="toggle-lesson" data-id="${lesson.id}" class="w-full flex items-center justify-between p-4 sm:p-5 bg-slate-50/50 dark:bg-slate-800/80 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors text-left focus:outline-none">
+                        <div class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-slate-400 transition-transform ${lesson.expanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            <h3 class="font-bold text-slate-900 dark:text-white text-base sm:text-lg">${lesson.title}</h3>
+                        </div>
+                        <span class="text-sm font-medium text-slate-500 bg-slate-200/50 dark:bg-slate-700 px-2.5 py-0.5 rounded-full">${qs.length}</span>
+                    </button>
+                    
+                    <div class="${lesson.expanded ? 'block' : 'hidden'} border-t border-slate-100 dark:border-slate-700/50 p-4 sm:p-5 space-y-3">
+                        ${qs.map((q, idx) => `
+                            <details class="group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden open:ring-1 open:ring-indigo-500/20 transition-all">
+                                <summary class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors list-none">
+                                    <div class="flex items-start sm:items-center gap-3 overflow-hidden">
+                                        <div class="shrink-0 flex items-center justify-center w-6 h-6 rounded bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-500">${idx+1}</div>
+                                        <div>
+                                            <p class="font-medium text-slate-900 dark:text-white truncate max-w-[200px] sm:max-w-md lg:max-w-xl">${q.prompt}</p>
+                                            <div class="flex flex-wrap gap-2 mt-1">
+                                                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">${q.type.toUpperCase()}</span>${q.mastery === 'needs-review' ? '<span class="text-[10px] uppercase font-bold tracking-wider text-amber-500">Needs Review</span>' : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2 shrink-0 self-end sm:self-auto">
+                                        <button data-action="mock-practice" class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-lg transition-colors border border-indigo-100 dark:border-indigo-800/50">Practice</button>
+                                        <div class="h-6 border-r border-slate-200 dark:border-slate-700 mx-1"></div>
+                                        <button data-action="open-modal" data-modal="editQuestion" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1.5 rounded-lg transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                        <button data-action="open-modal" data-modal="deleteConfirm" class="text-slate-400 hover:text-red-500 p-1.5 rounded-lg transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                        <svg class="w-4 h-4 text-slate-400 ml-1 mt-1.5 transition-transform group-open:rotate-180 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"></path></svg>
+                                    </div>
+                                </summary>
+                                <div class="px-4 pb-5 pt-2 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/30 dark:bg-slate-800/30">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <span class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Answer</span>
+                                            <p class="text-sm font-medium text-slate-800 dark:text-slate-200 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 px-3 py-2 rounded-lg">${q.type === 'mcq' ? q.choices[q.correctAnswer] : q.correctAnswer}</p>
+                                        </div>
+                                        ${q.explanation ? `<div><span class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Explanation</span><p class="text-sm text-slate-600 dark:text-slate-300">${q.explanation}</p></div>` : ''}
+                                    </div>
+                                </div>
+                            </details>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSessionConfigView() {
+            const set = state.studySets.find(s => s.id === state.activeSetId) || state.studySets[0];
+            return `
+                <div class="max-w-[720px] mx-auto space-y-8">
+                    <header class="text-center space-y-2">
+                        <span class="text-xs font-semibold px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full inline-block">Study Session</span>
+                        <h1 class="text-3xl font-bold text-slate-900 dark:text-white">${set.title}</h1>
+                        <p class="text-slate-500 dark:text-slate-400">Configure your session preferences.</p>
+                    </header>
+
+                    <div class="${clayCardClass} p-6 sm:p-8 space-y-6">
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-900 dark:text-white mb-3">Study Mode</label>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="border-2 border-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/20 p-4 rounded-xl cursor-pointer">
+                                    <p class="font-bold text-slate-900 dark:text-white mb-1">Multiple Choice & Quiz</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400">Test knowledge with standard questions.</p>
+                                </div>
+                                <div class="border border-slate-200 dark:border-slate-700 p-4 rounded-xl cursor-pointer hover:border-slate-400 transition-colors">
+                                    <p class="font-bold text-slate-900 dark:text-white mb-1">Flashcards</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400">Classic self-paced card review.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-900 dark:text-white mb-3">Question Count</label>
+                            <div class="flex gap-3">
+                                <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-medium text-sm">All (${set.totalQuestions})</button>
+                                <button class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium text-sm">10 Questions</button>
+                                <button class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium text-sm">20 Questions</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center">
+                        <button data-nav="detail" data-id="${set.id}" class="${secondaryButtonClass}">Cancel</button>
+                        <button data-nav="study" class="${primaryButtonClass} px-8">Start Learning</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStudySessionView() {
+            return `
+                <div class="max-w-[800px] mx-auto space-y-8">
+                    <div class="flex items-center justify-between">
+                        <button data-nav="detail" class="text-sm font-medium text-slate-500 hover:text-slate-900 dark:hover:text-white">Exit Session</button>
+                        <span class="text-sm font-bold text-indigo-600 dark:text-indigo-400">Question 1 of 5</span>
+                        <div class="w-24 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div class="bg-indigo-600 h-full" style="width: 20%"></div>
+                        </div>
+                    </div>
+
+                    <div class="${clayCardClass} p-8 sm:p-12 space-y-8">
+                        <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white leading-snug">What was the system of writing used by early Filipinos before the arrival of the Spanish?</h2>
+                        <div class="space-y-3">
+                            <button class="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all text-slate-800 dark:text-slate-200 font-medium">A. Alibata</button>
+                            <button class="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all text-slate-800 dark:text-slate-200 font-medium">B. Baybayin</button>
+                            <button class="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all text-slate-800 dark:text-slate-200 font-medium">C. Sanskrit</button>
+                            <button class="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all text-slate-800 dark:text-slate-200 font-medium">D. Cyrillic</button>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button data-nav="results" class="${primaryButtonClass} px-8">Next Question</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderResultsView() {
+            return `
+                <div class="max-w-[720px] mx-auto text-center space-y-8 py-8">
+                    <div class="w-24 h-24 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 flex items-center justify-center mx-auto shadow-sm">
+                        <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                    <div class="space-y-2">
+                        <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Session Complete!</h1>
+                        <p class="text-slate-500 dark:text-slate-400">Great job reviewing Philippine History.</p>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="${clayCardClass} p-5 text-center"><span class="block text-xs text-slate-400 mb-1">Score</span><span class="text-2xl font-bold text-slate-900 dark:text-white">85%</span></div>
+                        <div class="${clayCardClass} p-5 text-center"><span class="block text-xs text-slate-400 mb-1">Correct</span><span class="text-2xl font-bold text-emerald-600">17/20</span></div>
+                        <div class="${clayCardClass} p-5 text-center"><span class="block text-xs text-slate-400 mb-1">Time</span><span class="text-2xl font-bold text-slate-900 dark:text-white">4m 12s</span></div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+                        <button data-nav="library" class="${secondaryButtonClass}">Return to Library</button>
+                        <button data-nav="study" class="${primaryButtonClass}">Study Again</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTrashView() {
+            return `
+                <div class="max-w-[1000px] mx-auto space-y-8">
+                    <header class="mb-8">
+                        <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">Trash</h1>
+                        <p class="text-slate-500 dark:text-slate-400">Recently deleted study sets.</p>
+                    </header>
+                    <div class="space-y-4">
+                        ${state.trashSets.length === 0 ? '<p class="text-slate-400 text-center py-12">Trash is empty.</p>' : state.trashSets.map(t => `
+                            <div class="${clayCardClass} p-5 flex items-center justify-between">
+                                <div>
+                                    <h3 class="font-semibold text-slate-900 dark:text-white">${t.title}</h3>
+                                    <p class="text-xs text-slate-400">Deleted ${t.deletedDate} •${t.totalQuestions} items</p>
+                                </div>
+                                <button data-action="unimplemented" class="${secondaryButtonClass}">Restore</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderHelpView() {
+            return `
+                <div class="max-w-[800px] mx-auto space-y-8">
+                    <header class="mb-8">
+                        <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">Help Center</h1>
+                        <p class="text-slate-500 dark:text-slate-400">Frequently asked questions and guides.</p>
+                    </header>
+                    <div class="${clayCardClass} p-6 sm:p-8 space-y-6">
+                        <div class="space-y-2">
+                            <h3 class="font-bold text-slate-900 dark:text-white text-lg">How do I generate study sets with AI?</h3>
+                            <p class="text-sm text-slate-600 dark:text-slate-400">Navigate to Create, select AI, upload your PDF, DOCX, or TXT file, and click Generate Study Quiz.</p>
+                        </div>
+                        <div class="space-y-2 border-t border-slate-100 dark:border-slate-700/60 pt-6">
+                            <h3 class="font-bold text-slate-900 dark:text-white text-lg">Can I edit generated questions?</h3>
+                            <p class="text-sm text-slate-600 dark:text-slate-400">Yes! Open any study set from your Library and inspect the Questions & Review section to edit or delete any item.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- EVENT DELEGATION SETUP ---
+        function setupEventDelegation() {
+            document.addEventListener('click', (e) => {
+                const navBtn = e.target.closest('[data-nav]');
+                const actionBtn = e.target.closest('[data-action]');
+                
+                if (navBtn) {
+                    const view = navBtn.getAttribute('data-nav');
+                    const id = navBtn.getAttribute('data-id');
+                    const scroll = navBtn.getAttribute('data-scroll');
+                    navigate(view, id, scroll);
+                    return;
+                }
+
+                if (actionBtn) {
+                    const action = actionBtn.getAttribute('data-action');
+                    const val = actionBtn.getAttribute('data-val');
+                    const id = actionBtn.getAttribute('data-id');
+                    const modal = actionBtn.getAttribute('data-modal');
+
+                    if (action === 'toggle-theme') {
+                        state.theme = state.theme === 'dark' ? 'light' : 'dark';
+                        document.documentElement.classList.toggle('dark', state.theme === 'dark');
+                        localStorage.setItem('studyforge-theme', state.theme);
+                        renderShell();
+                    } else if (action === 'toggle-sidebar') {
+                        state.sidebarExpanded = !state.sidebarExpanded;
+                        renderShell();
+                    } else if (action === 'toggle-menu') {
+                        state.activeDropdown = state.activeDropdown === id ? null : id;
+                        renderPage();
+                    } else if (action === 'select-create-method') {
+                        state.createMethod = val;
+                        renderPage();
+                    } else if (action === 'back-to-create') {
+                        state.createMethod = null;
+                        renderPage();
+                    } else if (action === 'toggle-lesson') {
+                        const set = state.studySets.find(s => s.id === state.activeSetId) || state.studySets[0];
+                        const lesson = set.lessons.find(l => l.id === id);
+                        if (lesson) lesson.expanded = !lesson.expanded;
+                        renderPage();
+                    } else if (action === 'set-filter') {
+                        state.filterReview = val;
+                        renderPage();
+                    } else if (action === 'open-modal') {
+                        openModal(modal);
+                    } else if (action === 'close-modal') {
+                        closeModal();
+                    } else if (action === 'mock-select-file') {
+                        state.selectedFile = { name: 'PH_History_101.pdf', size: '2.4 MB' };
+                        renderPage();
+                    } else if (action === 'mock-remove-file') {
+                        state.selectedFile = null;
+                        renderPage();
+                    } else if (action === 'mock-add-card') {
+                        showToast('Card added successfully!');
+                    } else if (action === 'mock-delete') {
+                        state.studySets = state.studySets.filter(s => s.id !== id);
+                        showToast('Study set moved to trash.', 'info');
+                        renderPage();
+                    } else if (action === 'unimplemented') {
+                        showToast('This feature is part of the prototype.', 'info');
+                    }
+                } else {
+                    if (state.activeDropdown !== null) {
+                        state.activeDropdown = null;
+                        renderPage();
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
