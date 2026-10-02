@@ -12,8 +12,9 @@ export const STUDYDECK_COLUMNS = [
 
 export function normalizeEngineText(value: unknown): string {
   return String(value ?? "")
+    .normalize("NFKC")
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -115,7 +116,7 @@ export function enrichMcqFromPool(question: Question, sets: StudySet[]): Questio
   const seen = new Set(currentAnswers.map(normalizeEngineText));
   seen.add(normalizeEngineText(correct));
 
-  const metadata = parseDistractorMetadata(question.tags);
+  const metadata = question.distractorCandidates?.length ? question.distractorCandidates : parseDistractorMetadata(question.tags);
   const all = sets.flatMap(flattenQuestions);
   const candidateCards = all.filter((candidate) => candidate.id !== question.id);
   const currentTags = new Set(question.tags.map(normalizeEngineText).filter(Boolean));

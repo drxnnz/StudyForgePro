@@ -1,5 +1,5 @@
 export type ViewName =
-  | "home" | "library" | "import" | "ai" | "trash" | "help" | "create" | "processing"
+  | "home" | "library" | "trash" | "help" | "create" | "processing"
   | "generated-preview" | "detail" | "session-config" | "study" | "results";
 
 export type QuestionType = "mcq" | "tf" | "type" | "flashcard";
@@ -22,6 +22,20 @@ export interface Question {
   hints: string[];
   tags: string[];
   lessonId?: string;
+  example?: string;
+  distractorCandidates?: string[];
+  acceptedAnswers?: string[];
+  orderItems?: string[];
+  questionVariants?: string[];
+  transferVariants?: string[];
+  questionIntent?: string;
+  cognitiveLevel?: string;
+  statementVariants?: string[];
+  answerType?: string;
+  answerFormat?: string;
+  statementGroupId?: string;
+  distractorBank?: unknown[];
+  sourceDeck?: string;
 }
 
 export interface Lesson {
@@ -105,6 +119,6 @@ export interface ToastItem {
 }
 
 export const VIEW_ORDER: Record<ViewName, number> = {
-  home: 0, library: 1, import: 2, ai: 3, trash: 4, help: 5, create: 6, processing: 7,
+  home: 0, library: 1, trash: 2, help: 3, create: 4, processing: 5,
   "generated-preview": 6, detail: 7, "session-config": 8, study: 9, results: 10,
 };

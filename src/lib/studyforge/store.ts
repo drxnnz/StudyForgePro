@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { INITIAL_SETS, INITIAL_TRASH, flattenQuestions, correctLabel } from "./data";
 import { normalizeAnswer } from "@/lib/utils";
-import { adaptiveSessionOrder, enrichMcqFromPool, parseStudyDeck } from "./engine";
+import { normalizeStudyDeckForStorage, parseStudyDeck, questionTypeFromStudyDeckRow, STUDYDECK_COLUMNS_HEADER, STUDYDECK_FORMAT_HEADER, STUDYDECK_SEPARATOR_HEADER } from "./studydeck";
+import { adaptiveSessionOrder, enrichMcqFromPool } from "./engine";
 import type {
   CreateMethod, LearningRecord, Mastery, ModalName, Question, SessionConfig,
   StudySession, StudySet, ToastItem, TrashSet, ViewName,
@@ -119,6 +120,7 @@ function updateLearning(records: Record<string, LearningRecord>, q: Question, co
 
 function allQuestions(sets: StudySet[]) { return sets.flatMap(flattenQuestions); }
 
+
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let toastId = 1;
 
@@ -154,16 +156,76 @@ export const useAppStore = create<AppStore>()(persist((set, get) => ({
     set({ studySets: [copy, ...get().studySets] }); get().showToast("Study set duplicated.");
   },
   importStudyDeckText: (text, title = "Imported StudyDeck") => {
-    const lines = text.split(/\r?\n/).filter((line) => line.trim());
-    if (lines.length < 2) { get().showToast("Import needs a header row and at least one card.", "error"); return false; }
-    const parse = (line: string) => { const out: string[] = []; let cur = "", quoted = false; for (let i = 0; i < line.length; i++) { const c = line[i]; if (c === '"' && line[i + 1] === '"' && quoted) { cur += '"'; i++; } else if (c === '"') quoted = !quoted; else if (c === ',' && !quoted) { out.push(cur); cur = ""; } else cur += c; } out.push(cur); return out; };
-    const header = parse(lines[0]).map((x) => x.trim().toLowerCase()); const required = ["deck", "lesson", "front", "back", "explanation", "hint 1", "hint 2", "hint 3", "tags"];
-    if (!required.every((x) => header.includes(x))) { get().showToast("Import header must use the 9-column StudyDeck format.", "error"); return false; }
-    const idx = (name: string) => header.indexOf(name); const lessons = new Map<string, import("./types").Lesson>();
-    for (const line of lines.slice(1)) { const cells = parse(line); const lessonTitle = cells[idx("lesson")] || "Imported Lesson"; let lesson = lessons.get(lessonTitle); if (!lesson) { lesson = { id: `import_lesson_${Date.now()}_${lessons.size}`, title: lessonTitle, expanded: true, questions: [] }; lessons.set(lessonTitle, lesson); } const tags = (cells[idx("tags")] || "").split("|").map((x) => x.trim()).filter(Boolean); const type = tags.find((x) => x.startsWith("tf:")) ? "tf" : (cells[idx("hint 1")] || cells[idx("hint 2")] || cells[idx("hint 3")]) && (cells[idx("back")] || "").includes("|") ? "mcq" : "type"; const q: Question = { id: `import_q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, type, prompt: cells[idx("front")] || "", choices: type === "tf" ? ["True", "False"] : [], correctAnswer: type === "tf" ? ((cells[idx("back")] || "").toLowerCase() === "true" ? 0 : 1) : (cells[idx("back")] || ""), explanation: cells[idx("explanation")] || "", mastery: "needs-review", hints: [cells[idx("hint 1")] || "", cells[idx("hint 2")] || "", cells[idx("hint 3")] || ""].filter(Boolean), tags }; lesson.questions.push(q); }
-    const setId = `set_import_${Date.now()}`; const studySet: StudySet = { id: setId, title, subject: title, documentName: "Imported StudyDeck", progress: 0, totalQuestions: [...lessons.values()].reduce((n, l) => n + l.questions.length, 0), estimatedTime: "New", lastStudied: "Never", topics: [...lessons.keys()], lessons: [...lessons.values()] };
-    if (!studySet.totalQuestions) { get().showToast("No cards were found in the import.", "error"); return false; }
-    set({ studySets: [studySet, ...get().studySets], activeSetId: setId }); get().showToast(`${studySet.totalQuestions} cards imported.`); return true;
+    try {
+      const canonicalText = normalizeStudyDeckForStorage(text);
+      const parsed = parseStudyDeck(canonicalText);
+      const lessons = new Map<string, import("./types").Lesson>();
+      for (const row of parsed.rows) {
+        let lesson = lessons.get(row.lesson);
+        if (!lesson) {
+          lesson = { id: `import_lesson_${Date.now()}_${lessons.size}`, title: row.lesson, expanded: true, questions: [] };
+          lessons.set(row.lesson, lesson);
+        }
+        const type = questionTypeFromStudyDeckRow(row);
+        const tfMatch = row.tags.join(", ").match(/(?:^|,\s*)tf:(true|false)(?:,|$)/i);
+        const choices = type === "tf"
+          ? ["True", "False"]
+          : type === "mcq"
+            ? [row.back, ...row.distractorCandidates.filter((candidate) => candidate.trim().toLowerCase() !== row.back.trim().toLowerCase()).slice(0, 3)]
+            : [];
+        const question: Question = {
+          id: `import_q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          type,
+          prompt: row.front,
+          choices,
+          correctAnswer: type === "tf" ? (tfMatch?.[1]?.toLowerCase() === "true" ? 0 : 1) : type === "mcq" ? 0 : row.back,
+          explanation: row.explanation,
+          example: row.example || undefined,
+          mastery: "needs-review",
+          hints: row.hints.filter(Boolean),
+          tags: row.tags,
+          distractorCandidates: row.distractorCandidates,
+          acceptedAnswers: row.acceptedAnswers,
+          orderItems: row.orderItems,
+          questionVariants: row.questionVariants,
+          transferVariants: row.transferVariants,
+          questionIntent: row.questionIntent,
+          cognitiveLevel: row.cognitiveLevel,
+          statementVariants: row.statementVariants,
+          answerType: row.answerType,
+          answerFormat: row.answerFormat,
+          statementGroupId: row.statementGroupId,
+          distractorBank: row.distractorBank,
+          sourceDeck: row.deck,
+          lessonId: lesson.id,
+        };
+        lesson.questions.push(question);
+      }
+      const setId = `set_import_${Date.now()}`;
+      const firstDeck = parsed.rows[0]?.deck?.trim();
+      const studySet: StudySet = {
+        id: setId,
+        title: firstDeck || title,
+        subject: firstDeck || title,
+        documentName: "Imported StudyDeck",
+        progress: 0,
+        totalQuestions: [...lessons.values()].reduce((n, lesson) => n + lesson.questions.length, 0),
+        estimatedTime: "New",
+        lastStudied: "Never",
+        topics: [...lessons.keys()],
+        lessons: [...lessons.values()],
+      };
+      if (!studySet.totalQuestions) {
+        get().showToast("No cards were found in the StudyDeck import.", "error");
+        return false;
+      }
+      set({ studySets: [studySet, ...get().studySets], activeSetId: setId });
+      get().showToast(`${studySet.totalQuestions} cards imported.`);
+      return true;
+    } catch (error) {
+      get().showToast(error instanceof Error ? error.message : "The StudyDeck file could not be validated.", "error");
+      return false;
+    }
   },
   mockDeleteSet: (id) => {
     const item = get().studySets.find((s) => s.id === id); if (!item) return;
@@ -177,16 +239,38 @@ export const useAppStore = create<AppStore>()(persist((set, get) => ({
   permanentlyDeleteTrashSet: (id) => set({ trashSets: get().trashSets.filter((x) => x.id !== id) }),
   emptyTrash: () => set({ trashSets: [] }),
   exportStudyDeck: (setId) => {
-    const item = get().studySets.find((s) => s.id === setId); if (!item || typeof document === "undefined") return;
-    const rows = ["Deck,Lesson,Front,Back,Explanation,Hint 1,Hint 2,Hint 3,Tags"];
-    const esc = (v: string) => `"${v.replaceAll('"', '""')}"`;
-    item.lessons.forEach((lesson) => lesson.questions.forEach((q) => {
-      const tags = [...q.tags, ...(q.example ? [`__example__=${encodeURIComponent(q.example)}`] : [])].join("|");
-      const hints = [q.hints[0] ?? "", q.hints[1] ?? "", q.hints[2] ?? ""];
-      rows.push([item.title, lesson.title, q.prompt, correctLabel(q), q.explanation, ...hints, tags].map((v) => esc(v)).join(","));
+    const item = get().studySets.find((s) => s.id === setId);
+    if (!item || typeof document === "undefined") return;
+    const rows = item.lessons.flatMap((lesson) => lesson.questions.map((q) => {
+      const metadata = [
+        ...q.tags,
+        q.example ? `__example__:${encodeURIComponent(q.example)}` : "",
+        q.distractorCandidates?.length ? `__distractors__:${encodeURIComponent(JSON.stringify(q.distractorCandidates))}` : "",
+        q.type === "tf" ? `tf:${q.correctAnswer === 0 ? "true" : "false"}` : "",
+        q.acceptedAnswers?.length ? `__accepted__:${encodeURIComponent(JSON.stringify(q.acceptedAnswers))}` : "",
+        q.orderItems?.length ? `__order__:${encodeURIComponent(JSON.stringify(q.orderItems))}` : "",
+        q.questionVariants?.length ? `__variants__:${encodeURIComponent(JSON.stringify(q.questionVariants))}` : "",
+        q.transferVariants?.length ? `__transfer_variants__:${encodeURIComponent(JSON.stringify(q.transferVariants))}` : "",
+        q.questionIntent ? `__question_intent__:${encodeURIComponent(q.questionIntent)}` : "",
+        q.cognitiveLevel ? `__cognitive_level__:${encodeURIComponent(q.cognitiveLevel)}` : "",
+        q.statementVariants?.length ? `__statement_variants__:${encodeURIComponent(JSON.stringify(q.statementVariants))}` : "",
+        q.answerType ? `__answer_type__:${encodeURIComponent(q.answerType)}` : "",
+        q.answerFormat ? `__answer_format__:${encodeURIComponent(q.answerFormat)}` : "",
+        q.statementGroupId ? `__statement_group__:${encodeURIComponent(q.statementGroupId)}` : "",
+        q.distractorBank?.length ? `__distractor_bank__:${encodeURIComponent(JSON.stringify(q.distractorBank))}` : "",
+      ].filter(Boolean).join(", ");
+      const fields = [item.title, lesson.title, q.prompt, correctLabel(q), q.explanation, q.hints[0] ?? "", q.hints[1] ?? "", q.hints[2] ?? "", metadata]
+        .map((field) => String(field ?? "").replace(/[\t\r\n]+/g, " ").trim());
+      return fields.join("\t");
     }));
-    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `${item.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "studyforge"}.csv`; a.click(); URL.revokeObjectURL(url);
+    const output = [STUDYDECK_FORMAT_HEADER, STUDYDECK_SEPARATOR_HEADER, STUDYDECK_COLUMNS_HEADER, ...rows].join("\n");
+    const blob = new Blob([output], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${item.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "studyforge"}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
     get().showToast("StudyDeck exported.");
   },
   shareStudyDeck: async (setId) => {
@@ -205,8 +289,7 @@ export const useAppStore = create<AppStore>()(persist((set, get) => ({
     });
     if (sessionConfig.reviewDueOnly) questions = questions.filter((q) => recordFor(q.id, learningRecords).dueAt <= Date.now());
     if (sessionConfig.mode === "mcq") questions = questions.map((q) => enrichMcqFromPool(q, studySets));
-    if (sessionConfig.count !== "all") questions = adaptiveSessionOrder(questions, learningRecords, sessionConfig.count);
-    else questions = adaptiveSessionOrder(questions, learningRecords, questions.length);
+    questions = adaptiveSessionOrder(questions, learningRecords, sessionConfig.count === "all" ? questions.length : sessionConfig.count);
     if (!questions.length) { get().showToast("No matching cards are available for this session.", "info"); return; }
     set({ activeSetId: studySet.id, typedAnswer: "", session: { setId: studySet.id, mode: sessionConfig.mode, questions, index: 0, answers: [], revealed: false, selected: null, flipped: false, hintLevel: 0, startedAt: Date.now(), finishedAt: null, timeLimitSeconds: sessionConfig.speedrun ? sessionConfig.timerSeconds : null }, view: "study", navDirection: "forward" });
   },
